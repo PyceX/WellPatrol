@@ -1,0 +1,26 @@
+{
+  "name": "WellPatrol",
+  "short_name": "WellPatrol",
+  "description": "WellPatrol — мобильное приложение для операторов по добыче нефти",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0e14",
+  "theme_color": "#000000",
+  "lang": "kk",
+  "icons": [
+    {
+      "src": "favicons/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "favicons/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

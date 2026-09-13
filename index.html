@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0b0e14">
+  <meta name="description" content="🛢️ WellPatrol — мобильное приложение для операторов по добыче нефти">
+  <title>🛢️ WellPatrol</title>
+  <link rel="icon" type="image/x-icon" href="favicons/favicon.ico">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicons/favicon-16x16.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="48x48" href="favicons/favicon-48x48.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="favicons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ШАПКА -->
+  <header class="app-header">
+    <div class="brand">
+      <span class="logo">🛢️ WellPatrol</span>
+      <span id="gps-status" class="gps-badge">GPS: поиск...</span>
+    </div>
+    <div class="header-controls">
+      <button type="button" class="btn-header-action btn-scan-action" id="btn-open-scan" title="Распознать суточный рапорт с фото (Gemini)">
+        <span>📸</span> <span class="btn-text">Скан</span>
+      </button>
+      <button type="button" class="btn-header-action" id="btn-open-export" title="Экспорт и Бэкап">
+        <span>📤</span> <span class="btn-text">Экспорт</span>
+      </button>
+      <div class="ptv-control">
+        <select id="ptv-select">
+          <option value="9">ПТВ-9</option>
+          <option value="10">ПТВ-10</option>
+          <option value="11" selected>ПТВ-11</option>
+          <option value="12">ПТВ-12</option>
+          <option value="13">ПТВ-13</option>
+        </select>
+      </div>
+      <button class="btn-add-well" id="btn-add-well" title="Добавить скважину">+</button>
+    </div>
+  </header>
+
+  <!-- КОНТЕНТ -->
+  <main class="content-area">
+
+    <!-- Таб 1: ОБХОД -->
+    <section id="tab-patrol" class="tab-pane active">
+      <div class="filter-bar">
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="well-search" placeholder="Поиск по № скв..." inputmode="numeric" autocomplete="off">
+        </div>
+        <div class="sort-wrap">
+          <select id="patrol-sort-select" title="Сортировка скважин">
+            <option value="num">🔢 По номеру</option>
+            <option value="gps">📍 По GPS</option>
+          </select>
+        </div>
+        <div class="summary-pill" id="patrol-progress">0 / 0</div>
+      </div>
+      <div class="filter-pills" id="patrol-filter-pills">
+        <button class="pill-btn active" data-filter="all">Все</button>
+        <button class="pill-btn" data-filter="todo">Осталось</button>
+        <button class="pill-btn" data-filter="done">Завершено</button>
+        <button class="pill-btn" data-filter="notes">С примечанием</button>
+      </div>
+      <div id="wells-list" class="wells-container"></div>
+    </section>
+
+    <!-- Таб 2: РАПОРТ -->
+    <section id="tab-report" class="tab-pane">
+      <div class="report-toolbar">
+        <div class="date-selector">
+          <label for="report-date">Дата:</label>
+          <input type="date" id="report-date">
+        </div>
+      </div>
+      <div class="table-scroll-wrapper">
+        <table class="report-table" id="report-table">
+          <thead>
+            <tr>
+              <th>Скв</th><th>Показания</th><th>Q</th>
+              <th>P б</th><th>P з</th><th>t°</th><th>Об</th>
+              <th>⏰</th><th>📝</th>
+            </tr>
+          </thead>
+          <tbody id="report-table-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Таб 3: П/З (ПЕРЕЗАМЕР) -->
+    <section id="tab-pz" class="tab-pane">
+      <div class="filter-bar">
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="pz-search" placeholder="Поиск в П/З..." autocomplete="off">
+        </div>
+        <button type="button" class="btn btn-primary btn-add-pz-manual" id="btn-add-pz-manual">+ П/З</button>
+      </div>
+      <div class="filter-pills" id="pz-filter-pills">
+        <button class="pill-btn active" data-pz-filter="all">Все</button>
+        <button class="pill-btn" data-pz-filter="pending">Ожидают 2-й замер</button>
+        <button class="pill-btn" data-pz-filter="done">Завершенные</button>
+      </div>
+      <div id="pz-list" class="pz-container"></div>
+    </section>
+  </main>
+
+  <!-- НИЖНЯЯ НАВИГАЦИЯ -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-tab="tab-patrol">
+      <span class="nav-icon">🚶</span>
+      <span class="nav-label">Обход</span>
+    </button>
+    <button class="nav-btn" data-tab="tab-report">
+      <span class="nav-icon">📋</span>
+      <span class="nav-label">Рапорт</span>
+    </button>
+    <button class="nav-btn" data-tab="tab-pz">
+      <span class="nav-icon">🔄</span>
+      <span class="nav-label">П/З</span>
+    </button>
+  </nav>
+
+  <!-- МОДАЛ: ЗАМЕР СКВАЖИНЫ -->
+  <div id="modal-measure" class="modal hidden">
+    <div class="modal-backdrop" id="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h2 id="modal-well-title">№ 1170</h2>
+          <span class="sub-title" id="modal-ptv-title">ПТВ-11</span>
+        </div>
+        <button class="modal-close" id="btn-close-modal">&times;</button>
+      </div>
+      <form id="form-measure" novalidate>
+        <input type="hidden" id="form-well-id">
+
+        <!-- Кнопка/ползунок П/З (Перезамер) -->
+        <div class="pz-toggle-card" id="pz-toggle-card">
+          <div class="pz-toggle-info">
+            <span class="pz-toggle-title">🔄 В журнал П/З (Перезамер)</span>
+            <span class="pz-toggle-sub">Клонировать № СКВ, время и показания в П/З</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="input-pz-clone">
+            <span class="slider round"></span>
+          </label>
+        </div>
+
+        <div class="form-row two-cols">
+          <div class="form-group">
+            <label>Время</label>
+            <input type="time" id="input-time" required>
+          </div>
+          <div class="form-group">
+            <label>Дата</label>
+            <input type="date" id="input-date" required>
+          </div>
+        </div>
+        <div class="form-group highlight-box">
+          <div class="row-between">
+            <label>Показания</label>
+            <span class="prev-badge" id="prev-meter-text">Последний: —</span>
+          </div>
+          <input type="number" id="input-meter" step="any" inputmode="numeric" placeholder="0" required>
+        </div>
+        <div class="form-group highlight-box-accent">
+          <label>Q факт (м³/сут)</label>
+          <div class="input-badge-wrap">
+            <input type="number" id="input-flow" step="any" inputmode="decimal" placeholder="0.0">
+            <span class="autocalc-badge hidden" id="flow-autocalc-badge">⚡ Авто</span>
+          </div>
+          <div class="field-warn hidden" id="warn-flow"></div>
+        </div>
+        <div class="form-row two-cols">
+          <div class="form-group">
+            <label>P буф</label>
+            <input type="number" id="input-pbuf" step="0.1" inputmode="decimal" placeholder="0.0">
+            <div class="field-warn hidden" id="warn-pbuf"></div>
+          </div>
+          <div class="form-group">
+            <label>P зат</label>
+            <input type="number" id="input-pzat" step="0.1" inputmode="decimal" placeholder="0.0">
+            <div class="field-warn hidden" id="warn-pzat"></div>
+          </div>
+        </div>
+        <div class="form-row two-cols">
+          <div class="form-group">
+            <label>t°C</label>
+            <input type="number" id="input-temp" step="1" inputmode="numeric" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label>Об/Чк</label>
+            <input type="number" id="input-strokes" step="1" inputmode="numeric" placeholder="0">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Примечание</label>
+          <input type="text" id="input-notes" placeholder="Текст">
+        </div>
+
+        <!-- Секция: История замеров и график -->
+        <div class="history-block">
+          <button type="button" class="btn-history-toggle" id="btn-toggle-history">
+            <span>📈 История замеров (7 дней)</span>
+            <span id="history-arrow">▼</span>
+          </button>
+          <div class="history-content hidden" id="history-content">
+            <div class="history-chart-container" id="history-chart"></div>
+            <div class="history-table-wrapper">
+              <table class="mini-history-table">
+                <thead>
+                  <tr><th>Дата</th><th>Показания</th><th>Q</th><th>P б</th><th>P з</th></tr>
+                </thead>
+                <tbody id="history-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="btn-cancel-modal">Отмена</button>
+          <button type="submit" class="btn btn-primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- МОДАЛ: ЭКСПОРТ И БЭКАП -->
+  <div id="modal-export" class="modal hidden">
+    <div class="modal-backdrop" id="export-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h2>Экспорт & Бэкап</h2>
+          <span class="sub-title">Выгрузка и сохранение данных</span>
+        </div>
+        <button class="modal-close" id="btn-close-export">&times;</button>
+      </div>
+      <div class="card export-card">
+        <h2 class="card-title">📊 CSV-экспорт</h2>
+        <p class="card-desc">Выгрузить данные в CSV для Excel.</p>
+        <div class="form-group">
+          <label for="export-date">Дата:</label>
+          <input type="date" id="export-date">
+        </div>
+        <button id="btn-export-csv" class="btn btn-primary full-width">Экспорт (.csv)</button>
+      </div>
+      <div class="card export-card">
+        <h2 class="card-title">💾 Бэкап (JSON)</h2>
+        <p class="card-desc">Сохранить / восстановить историю.</p>
+        <button id="btn-export-backup" class="btn full-width">Сохранить копию (.json)</button>
+        <div class="restore-zone">
+          <label for="import-file" class="file-label">Выбрать файл</label>
+          <input type="file" id="import-file" accept=".json">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- МОДАЛ: ДОБАВИТЬ/РЕДАКТИРОВАТЬ П/З -->
+  <div id="modal-pz-edit" class="modal hidden">
+    <div class="modal-backdrop" id="pz-edit-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h2 id="pz-modal-title">Перезамер (П/З)</h2>
+          <span class="sub-title">Карточка перезамера</span>
+        </div>
+        <button class="modal-close" id="btn-close-pz-edit">&times;</button>
+      </div>
+      <form id="form-pz-edit" novalidate>
+        <input type="hidden" id="pz-edit-id">
+        <div class="form-group">
+          <label>Номер скважины</label>
+          <input type="text" id="pz-edit-well-number" required placeholder="например, 1170">
+        </div>
+        <div class="highlight-box">
+          <div class="row-between">
+            <label style="font-weight:700; color:var(--c-primary);">Замер 1</label>
+          </div>
+          <div class="form-row two-cols" style="margin-bottom:0;">
+            <div class="form-group">
+              <label>Показание 1</label>
+              <input type="number" step="any" id="pz-edit-v1" required placeholder="0">
+            </div>
+            <div class="form-group">
+              <label>Дата и Время 1</label>
+              <input type="datetime-local" id="pz-edit-t1" required>
+            </div>
+          </div>
+        </div>
+        <div class="highlight-box-accent">
+          <div class="row-between">
+            <label style="font-weight:700; color:var(--c-success);">Замер 2</label>
+          </div>
+          <div class="form-row two-cols" style="margin-bottom:0;">
+            <div class="form-group">
+              <label>Показание 2</label>
+              <input type="number" step="any" id="pz-edit-v2" placeholder="Не заполнено">
+            </div>
+            <div class="form-group">
+              <label>Дата и Время 2</label>
+              <input type="datetime-local" id="pz-edit-t2">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="btn-cancel-pz-edit">Отмена</button>
+          <button type="submit" class="btn btn-primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- МОДАЛ: КЛОНИРОВАТЬ П/З -->
+  <div id="modal-pz-clone" class="modal hidden">
+    <div class="modal-backdrop" id="pz-clone-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h2>Клонировать П/З <span id="pz-clone-well-name" class="sub-title"></span></h2>
+          <span class="sub-title">Создать новую запись в П/З</span>
+        </div>
+        <button class="modal-close" id="btn-close-pz-clone">&times;</button>
+      </div>
+      <form id="form-pz-clone" novalidate>
+        <input type="hidden" id="pz-clone-source-id">
+        <div class="form-group">
+          <label>Номер новой скважины</label>
+          <input type="text" id="pz-clone-well-number" required>
+        </div>
+        <div class="form-group">
+          <label style="font-weight:600; margin-bottom:8px;">Какое показание использовать как стартовое?</label>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <label style="display:flex; align-items:center; gap:8px; padding:10px; border:1px solid var(--c-border); border-radius:var(--r-sm); cursor:pointer; background-color:var(--c-surface);">
+              <input type="radio" name="pz-clone-source" value="1" checked>
+              <span style="font-size:0.85rem; font-weight:600;">Замер 1: <span id="pz-clone-v1-text" style="font-family:monospace; font-weight:700;"></span> (<span id="pz-clone-t1-text" style="color:var(--c-text-muted);"></span>)</span>
+            </label>
+            <label id="pz-clone-opt-2-wrap" style="display:flex; align-items:center; gap:8px; padding:10px; border:1px solid var(--c-border); border-radius:var(--r-sm); cursor:pointer; background-color:var(--c-surface);">
+              <input type="radio" name="pz-clone-source" value="2">
+              <span style="font-size:0.85rem; font-weight:600;">Замер 2: <span id="pz-clone-v2-text" style="font-family:monospace; font-weight:700;"></span> (<span id="pz-clone-t2-text" style="color:var(--c-text-muted);"></span>)</span>
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="btn-cancel-pz-clone">Отмена</button>
+          <button type="submit" class="btn btn-primary">Создать клон</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- МОДАЛ: ДОБАВИТЬ СКВАЖИНУ -->
+  <div id="modal-add-well" class="modal hidden">
+    <div class="modal-backdrop" id="add-well-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h2 id="add-well-title">Добавить скважину</h2>
+          <span class="sub-title" id="add-well-ptv-label">ПТВ-11</span>
+        </div>
+        <button class="modal-close" id="btn-close-add-well">&times;</button>
+      </div>
+      <form id="form-add-well" novalidate>
+        <div class="form-group">
+          <label>Номер скважины</label>
+          <input type="text" id="add-well-number" inputmode="text" placeholder="1170" required>
+        </div>
+        <div class="form-group">
+          <div class="row-between">
+            <label>GPS координаты (метка на карте)</label>
+            <button type="button" class="btn-text-action" id="btn-snap-gps">📍 Моё GPS</button>
+          </div>
+          <div class="map-picker-box">
+            <div id="add-well-map" class="map-picker-canvas"></div>
+            <div class="map-picker-footer">
+              <span class="map-coords-text">Координаты: <b id="add-well-lat">45.3150</b>, <b id="add-well-lon">51.7850</b></span>
+              <span class="map-hint-text">Кликните или потяните метку</span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="btn-cancel-add-well">Отмена</button>
+          <button type="submit" class="btn btn-primary">Добавить + Код</button>
+        </div>
+      </form>
+
+      <!-- Блок с готовым кодом -->
+      <div id="code-output-area" class="code-output hidden">
+        <div class="code-output-header">
+          <span>📋 Код для db.js:</span>
+          <button type="button" class="btn-copy" id="btn-copy-code">Копировать</button>
+        </div>
+        <pre id="code-output-pre"><code id="code-output-text"></code></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- МОДАЛ: ИМПОРТ РАПОРТА С ФОТО (GEMINI) -->
+  <div id="modal-scan-ocr" class="modal hidden">
+    <div class="modal-backdrop" id="scan-backdrop"></div>
+    <div class="modal-content scan-modal-content">
+      <div class="modal-header">
+        <div>
+          <h2>📸 Скан рапорта (Gemini)</h2>
+          <span class="sub-title">Автораспознавание рукописного рапорта с фото</span>
+        </div>
+        <button class="modal-close" id="btn-close-scan">&times;</button>
+      </div>
+
+      <!-- Зона 1: Загрузка снимка и API ключ -->
+      <div class="scan-step-1" id="scan-step-1">
+        <div class="api-key-config-box">
+          <div class="row-between" style="margin-bottom:4px;">
+            <label for="input-gemini-key" style="font-weight:700;font-size:0.78rem;">🔑 Gemini API Key:</label>
+            <span style="font-size:0.7rem;color:var(--c-text-muted);">Сохраняется локально</span>
+          </div>
+          <input type="password" id="input-gemini-key" placeholder="AIzaSy..." autocomplete="off">
+        </div>
+
+        <div class="scan-upload-box">
+          <div class="upload-icon">📄📸</div>
+          <p class="upload-title">Сфотографируйте или выберите снимки А4 рапорта</p>
+          <p class="upload-sub">Поддерживается рукописная таблица ПТВ</p>
+          <label for="input-report-photo" class="btn btn-primary btn-upload-photo">
+            <span>📷 Выбрать фото / Сделать снимок</span>
+          </label>
+          <input type="file" id="input-report-photo" accept="image/*" class="hidden">
+        </div>
+      </div>
+
+      <!-- Зона 2: Загрузка/Распознавание -->
+      <div class="scan-loading hidden" id="scan-loading">
+        <div class="spinner"></div>
+        <p class="loading-text">Распознаём рукописный рапорт с помощью Gemini...</p>
+        <span class="loading-sub">Извлечение показаний, Q, давления, температуры и времени</span>
+      </div>
+
+      <!-- Зона 3: Таблица сверки результатов -->
+      <div class="scan-step-2 hidden" id="scan-step-2">
+        <div class="scan-summary-bar">
+          <div class="scan-date-wrap">
+            <label for="scan-input-date">📅 Дата:</label>
+            <input type="date" id="scan-input-date" class="scan-date-input">
+          </div>
+          <span id="scan-count-text" class="scan-count-tag">Найдено: <b>0</b> замеров</span>
+        </div>
+        <div class="scan-table-wrapper">
+          <table class="scan-preview-table">
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="scan-check-all" checked></th>
+                <th>СКВ</th>
+                <th>Показания</th>
+                <th>Q</th>
+                <th>P б</th>
+                <th>P з</th>
+                <th>t°</th>
+                <th>Об/м</th>
+                <th>Время</th>
+              </tr>
+            </thead>
+            <tbody id="scan-table-body"></tbody>
+          </table>
+        </div>
+        <div class="modal-footer" style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">
+          <button type="button" class="btn btn-secondary" id="btn-cancel-scan">Отмена</button>
+          <button type="button" class="btn btn-primary" id="btn-apply-scan">✓ Импортировать в базу</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="db.js"></script>
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(console.error);
+    }
+  </script>
+</body>
+</html>

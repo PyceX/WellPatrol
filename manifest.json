@@ -5,10 +5,10 @@
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "fullscreen", "minimal-ui"],
   "orientation": "portrait",
-  "background_color": "#0b0e14",
-  "theme_color": "#000000",
-  "lang": "kk",
+  "background_color": "#161b22",
+  "lang": "ru",
   "icons": [
     {
       "src": "favicons/android-chrome-192x192.png",

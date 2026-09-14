@@ -1,4 +1,4 @@
-const CACHE_NAME = 'dng-patrol-v35';
+const CACHE_NAME = 'dng-patrol-v46';
 const ASSETS = [
   './',
   './index.html',
@@ -24,7 +24,7 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+    caches.keys().then(ks => Promise.all(ks.map(k => caches.delete(k))))
   );
   self.clients.claim();
 });

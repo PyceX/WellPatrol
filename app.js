@@ -16,7 +16,55 @@ const App = {
   patrolFilter: 'all',
   pzFilter: 'all',
   sortMode: localStorage.getItem('dng_sort_mode') || 'num',
+  theme: localStorage.getItem('dng_theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'),
 };
+
+/* ── ТЕМА (День / Ночь) ─────────────────────────────────── */
+function applyTheme(theme) {
+  App.theme = theme;
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('dng_theme', theme);
+
+  const iconEl = document.getElementById('theme-icon');
+  const textEl = document.getElementById('theme-text');
+  const btnEl = document.getElementById('btn-theme-toggle');
+  const metaTheme = document.getElementById('meta-theme-color') || document.querySelector('meta[name="theme-color"]');
+  const appleStatusMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+
+  const themeColor = '#161b22';
+  if (metaTheme) metaTheme.setAttribute('content', themeColor);
+  if (appleStatusMeta) appleStatusMeta.setAttribute('content', 'black-translucent');
+
+  if (theme === 'light') {
+    if (iconEl) iconEl.textContent = '☀️';
+    if (textEl) textEl.textContent = 'День';
+    if (btnEl) btnEl.title = 'Переключить на ночную тему';
+  } else {
+    if (iconEl) iconEl.textContent = '🌙';
+    if (textEl) textEl.textContent = 'Ночь';
+    if (btnEl) btnEl.title = 'Переключить на дневную тему';
+  }
+}
+
+function initTheme() {
+  applyTheme(App.theme);
+  const btn = document.getElementById('btn-theme-toggle');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      const nextTheme = App.theme === 'dark' ? 'light' : 'dark';
+      applyTheme(nextTheme);
+      toast(nextTheme === 'light' ? '☀️ Включен дневной режим' : '🌙 Включен ночной режим', 'success');
+    });
+  }
+
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+      if (!localStorage.getItem('dng_theme')) {
+        applyTheme(e.matches ? 'dark' : 'light');
+      }
+    });
+  }
+}
 
 /* ── Утилиты ─────────────────────────────────────────────── */
 const today = () => new Date().toISOString().split('T')[0];
@@ -88,6 +136,7 @@ function toast(msg, type = '') {
 
 /* ── Инициализация ───────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', async () => {
+  initTheme();
   initPtv();
   initNav();
   initGps();
@@ -426,7 +475,7 @@ function renderHistoryChart(list) {
   const tbody = document.getElementById('history-table-body');
 
   if (!list || !list.length) {
-    box.innerHTML = '<div style="padding:40px;text-align:center;font-size:0.75rem;color:#94a3b8">Нет предыдущих замеров</div>';
+    box.innerHTML = '<div style="padding:40px;text-align:center;font-size:0.75rem;color:var(--c-text-muted)">Нет предыдущих замеров</div>';
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center">История пуста</td></tr>';
     return;
   }
@@ -445,7 +494,7 @@ function renderHistoryChart(list) {
   // SVG График
   const validQ = list.filter(m => m.flow_rate_q != null && !isNaN(m.flow_rate_q)).reverse();
   if (validQ.length < 2) {
-    box.innerHTML = '<div style="padding:40px;text-align:center;font-size:0.75rem;color:#94a3b8">Мало данных для построения графика</div>';
+    box.innerHTML = '<div style="padding:40px;text-align:center;font-size:0.75rem;color:var(--c-text-muted)">Мало данных для построения графика</div>';
     return;
   }
 
@@ -463,13 +512,13 @@ function renderHistoryChart(list) {
 
   const polyline = points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   const dots = points.map(p => `
-    <rect x="${(p.x - 3).toFixed(1)}" y="${(p.y - 3).toFixed(1)}" width="6" height="6" fill="#00ff9d" stroke="#000000" stroke-width="1"/>
-    <text x="${p.x.toFixed(1)}" y="${(p.y - 7).toFixed(1)}" font-size="9" font-family="'JetBrains Mono', monospace" font-weight="700" text-anchor="middle" fill="#00e5ff">${p.val}</text>
+    <rect x="${(p.x - 3).toFixed(1)}" y="${(p.y - 3).toFixed(1)}" width="6" height="6" fill="var(--c-success)" stroke="var(--c-pixel-border)" stroke-width="1"/>
+    <text x="${p.x.toFixed(1)}" y="${(p.y - 7).toFixed(1)}" font-size="9" font-family="'JetBrains Mono', monospace" font-weight="700" text-anchor="middle" fill="var(--c-primary)">${p.val}</text>
   `).join('');
 
   box.innerHTML = `
     <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:100%">
-      <polyline fill="none" stroke="#00e5ff" stroke-width="2.5" stroke-linecap="square" points="${polyline}"/>
+      <polyline fill="none" stroke="var(--c-primary)" stroke-width="2.5" stroke-linecap="square" points="${polyline}"/>
       ${dots}
     </svg>
   `;

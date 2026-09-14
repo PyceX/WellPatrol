@@ -2,10 +2,26 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#0b0e14">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#161b22" id="meta-theme-color">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-touch-fullscreen" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" id="meta-apple-status">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="description" content="🛢️ WellPatrol — мобильное приложение для операторов по добыче нефти">
   <title>🛢️ WellPatrol</title>
+  <script>
+    (function() {
+      var saved = localStorage.getItem('dng_theme');
+      var isLight = saved === 'light' || (!saved && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+      document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+      var meta = document.getElementById('meta-theme-color');
+      if (meta) meta.setAttribute('content', '#161b22');
+      var appleMeta = document.getElementById('meta-apple-status');
+      if (appleMeta) appleMeta.setAttribute('content', 'black-translucent');
+    })();
+  </script>
   <link rel="icon" type="image/x-icon" href="favicons/favicon.ico">
   <link rel="icon" type="image/png" sizes="16x16" href="favicons/favicon-16x16.png">
   <link rel="icon" type="image/png" sizes="32x32" href="favicons/favicon-32x32.png">
@@ -22,27 +38,32 @@
 
   <!-- ШАПКА -->
   <header class="app-header">
-    <div class="brand">
-      <span class="logo">🛢️ WellPatrol</span>
-      <span id="gps-status" class="gps-badge">GPS: поиск...</span>
-    </div>
-    <div class="header-controls">
-      <button type="button" class="btn-header-action btn-scan-action" id="btn-open-scan" title="Распознать суточный рапорт с фото (Gemini)">
-        <span>📸</span> <span class="btn-text">Скан</span>
-      </button>
-      <button type="button" class="btn-header-action" id="btn-open-export" title="Экспорт и Бэкап">
-        <span>📤</span> <span class="btn-text">Экспорт</span>
-      </button>
-      <div class="ptv-control">
-        <select id="ptv-select">
-          <option value="9">ПТВ-9</option>
-          <option value="10">ПТВ-10</option>
-          <option value="11" selected>ПТВ-11</option>
-          <option value="12">ПТВ-12</option>
-          <option value="13">ПТВ-13</option>
-        </select>
+    <div class="app-header-content">
+      <div class="brand">
+        <span class="logo">🛢️ WellPatrol</span>
+        <span id="gps-status" class="gps-badge">GPS: поиск...</span>
       </div>
-      <button class="btn-add-well" id="btn-add-well" title="Добавить скважину">+</button>
+      <div class="header-controls">
+        <button type="button" class="btn-header-action btn-theme-toggle" id="btn-theme-toggle" title="Переключить тему (День / Ночь)">
+          <span id="theme-icon">🌙</span> <span class="btn-text" id="theme-text">Ночь</span>
+        </button>
+        <button type="button" class="btn-header-action btn-scan-action" id="btn-open-scan" title="Распознать суточный рапорт с фото (Gemini)">
+          <span>📸</span> <span class="btn-text">Скан</span>
+        </button>
+        <button type="button" class="btn-header-action" id="btn-open-export" title="Экспорт и Бэкап">
+          <span>📤</span> <span class="btn-text">Экспорт</span>
+        </button>
+        <div class="ptv-control">
+          <select id="ptv-select">
+            <option value="9">ПТВ-9</option>
+            <option value="10">ПТВ-10</option>
+            <option value="11" selected>ПТВ-11</option>
+            <option value="12">ПТВ-12</option>
+            <option value="13">ПТВ-13</option>
+          </select>
+        </div>
+        <button class="btn-add-well" id="btn-add-well" title="Добавить скважину">+</button>
+      </div>
     </div>
   </header>
 
@@ -488,7 +509,9 @@
   <script src="app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch(console.error);
+      navigator.serviceWorker.register('sw.js').then(function(reg) {
+        reg.update();
+      }).catch(console.error);
     }
   </script>
 </body>

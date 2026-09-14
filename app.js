@@ -1218,81 +1218,72 @@ async function renderPz() {
     const card = document.createElement('div');
     card.className = `pz-card ${isDone ? 'completed' : 'pending'}`;
 
-    let debitBannerHtml = '';
-    if (isDone && res) {
-      if (res.isError) {
-        debitBannerHtml = `
-          <div class="pz-debit-banner" style="background-color:rgba(220,38,38,0.06); border-color:rgba(220,38,38,0.2);">
-            <div class="pz-debit-info">
-              <span class="pz-debit-title" style="color:var(--c-danger);">Ошибка расчета</span>
-              <span class="pz-debit-sub">${res.debit}</span>
-            </div>
-          </div>`;
-      } else {
-        const durStr = formatDuration(res.minutes);
-        debitBannerHtml = `
-          <div class="pz-debit-banner">
-            <div class="pz-debit-info">
-              <span class="pz-debit-title">Дебит (м³/сут)</span>
-              <div class="pz-debit-val">${res.debit} <span>м³</span></div>
-              <span class="pz-debit-sub">⏱️ За ${durStr} (${res.minutes} мин)</span>
-            </div>
-            <button type="button" class="pz-debit-copy-btn" onclick="copyPzReport('${r.id}', this)" title="Скопировать отчет">
-              <span>📋</span> <span>Скопировать</span>
-            </button>
-          </div>`;
-      }
-    }
-
-    let box2Html = '';
     if (isDone) {
-      box2Html = `
-        <div class="pz-meas-box">
-          <span class="pz-meas-label" style="color:var(--c-primary);">Замер 2</span>
-          <span class="pz-meas-val">${formatMeter(r.val_2)}</span>
-          <span class="pz-meas-time">⏰ ${formatDateTimePz(r.time_2)}</span>
-        </div>`;
+      card.innerHTML = `
+        <div class="pz-card-header">
+          <div class="pz-card-title">
+            <span class="pz-well-num">Скв. № ${r.well_number}</span>
+            ${r.ptv ? `<span class="prev-badge" style="font-size:0.68rem;">ПТВ-${r.ptv}</span>` : ''}
+          </div>
+          <div class="pz-card-actions">
+            <button type="button" class="btn-icon-sq btn-pz-clone" title="Клонировать">📋</button>
+            <button type="button" class="btn-icon-sq btn-pz-edit" title="Редактировать">✏️</button>
+            <button type="button" class="btn-icon-sq danger btn-pz-del" title="Удалить">🗑️</button>
+          </div>
+        </div>
+        <div class="pz-meas-grid-completed">
+          <div class="pz-meas-col">
+            <span class="pz-meas-lbl">1-й Замер</span>
+            <span class="pz-meas-val">${formatMeter(r.val_1)}</span>
+            <span class="pz-meas-time">⏰ ${formatDateTimePz(r.time_1)}</span>
+          </div>
+          <div class="pz-meas-col">
+            <span class="pz-meas-lbl" style="color:var(--c-primary);">2-й Замер</span>
+            <span class="pz-meas-val">${formatMeter(r.val_2)}</span>
+            <span class="pz-meas-time">⏰ ${formatDateTimePz(r.time_2)}</span>
+          </div>
+          <div class="pz-debit-banner ${res && res.isError ? 'error' : ''}">
+            <div class="pz-debit-main">
+              <span class="pz-debit-lbl">${res && res.isError ? 'Ошибка' : 'Дебит'}</span>
+              <span class="pz-debit-val">${res ? res.debit : ''} ${res && !res.isError ? '<small>м³/сут</small>' : ''}</span>
+              ${res && !res.isError ? `<span class="pz-debit-sub">⏱️ ${formatDuration(res.minutes)}</span>` : ''}
+            </div>
+            ${res && !res.isError ? `<button type="button" class="pz-copy-btn" onclick="copyPzReport('${r.id}', this)" title="Скопировать отчет">📋 Скопировать</button>` : ''}
+          </div>
+        </div>
+      `;
     } else {
       const defaultT2 = getLocalDatetime();
-      box2Html = `
-        <div class="pz-meas-box box-2-empty" style="grid-column: span 2;">
-          <div class="pz-inline-form">
-            <span class="pz-meas-label" style="color:var(--c-warning); font-size:0.75rem;">⚡ Быстрый расчет 2-го замера</span>
-            <div class="pz-inline-row">
-              <input type="number" step="any" id="v2-${r.id}" placeholder="Показ. 2" class="w-1/2 font-mono">
-              <input type="datetime-local" id="t2-${r.id}" value="${defaultT2}" class="w-1/2 auto-time" onfocus="this.classList.remove('auto-time')" oninput="this.classList.remove('auto-time')">
-            </div>
-            <button type="button" onclick="saveInlineSecond('${r.id}')" class="btn-calc-pz">
-              <span>⚡</span> <span>Рассчитать дебит</span>
-            </button>
+      card.innerHTML = `
+        <div class="pz-card-header">
+          <div class="pz-card-title">
+            <span class="pz-well-num">Скв. № ${r.well_number}</span>
+            ${r.ptv ? `<span class="prev-badge" style="font-size:0.68rem;">ПТВ-${r.ptv}</span>` : ''}
+            <span class="pz-status-badge pending">1-й замер</span>
           </div>
-        </div>`;
+          <div class="pz-card-actions">
+            <button type="button" class="btn-icon-sq btn-pz-clone" title="Клонировать">📋</button>
+            <button type="button" class="btn-icon-sq btn-pz-edit" title="Редактировать">✏️</button>
+            <button type="button" class="btn-icon-sq danger btn-pz-del" title="Удалить">🗑️</button>
+          </div>
+        </div>
+        <div class="pz-pending-box">
+          <div class="pz-meas-col">
+            <span class="pz-meas-lbl">1-й Замер</span>
+            <span class="pz-meas-val">${formatMeter(r.val_1)}</span>
+            <span class="pz-meas-time">⏰ ${formatDateTimePz(r.time_1)}</span>
+          </div>
+          <div class="pz-quick-form">
+            <span class="pz-quick-lbl">⚡ 2-й замер (быстрый расчет)</span>
+            <div class="pz-quick-inputs">
+              <input type="number" step="any" id="v2-${r.id}" placeholder="Показ. 2" class="pz-input-field font-mono">
+              <input type="datetime-local" id="t2-${r.id}" value="${defaultT2}" class="pz-input-field auto-time" onfocus="this.classList.remove('auto-time')" oninput="this.classList.remove('auto-time')">
+            </div>
+            <button type="button" onclick="saveInlineSecond('${r.id}')" class="btn-calc-pz">⚡ Рассчитать дебит</button>
+          </div>
+        </div>
+      `;
     }
-
-    card.innerHTML = `
-      <div class="pz-card-header">
-        <div class="pz-card-title">
-          <span>Скв. № ${r.well_number}</span>
-          ${r.ptv ? `<span class="prev-badge" style="font-size:0.7rem;">ПТВ-${r.ptv}</span>` : ''}
-          <span class="pz-status-badge ${isDone ? 'done' : 'pending'}">${isDone ? '✓ Рассчитан' : '1 замер'}</span>
-        </div>
-        <div class="pz-card-actions">
-          <button type="button" class="btn-icon-sm btn-pz-clone" title="Клонировать">📋 Клон</button>
-          <button type="button" class="btn-icon-sm btn-pz-edit" title="Редактировать">✏️ Изм</button>
-          <button type="button" class="btn-icon-sm danger btn-pz-del" title="Удалить">🗑️</button>
-        </div>
-      </div>
-      <div class="pz-meas-grid">
-        <div class="pz-meas-box">
-          <span class="pz-meas-label" style="color:var(--c-text-muted);">Замер 1</span>
-          <span class="pz-meas-val">${formatMeter(r.val_1)}</span>
-          <span class="pz-meas-time">⏰ ${formatDateTimePz(r.time_1)}</span>
-        </div>
-        ${isDone ? box2Html : ''}
-      </div>
-      ${!isDone ? box2Html : ''}
-      ${debitBannerHtml}
-    `;
 
     card.querySelector('.btn-pz-edit').addEventListener('click', () => openPzEditModal(r));
     card.querySelector('.btn-pz-clone').addEventListener('click', () => openPzCloneModal(r));

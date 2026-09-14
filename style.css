@@ -436,106 +436,137 @@ body {
 .pz-card {
   background-color: var(--c-surface);
   border: 1.5px solid var(--c-pixel-border); border-radius: var(--r-sm);
-  padding: 10px 12px; box-shadow: var(--shadow-pixel-lg);
-  display: flex; flex-direction: column; gap: 8px;
+  padding: 8px 10px; box-shadow: var(--shadow-pixel);
+  display: flex; flex-direction: column; gap: 6px;
 }
 
-.pz-card.completed { border-left: 4px solid var(--c-primary); }
-.pz-card.pending { border-left: 4px solid var(--c-warning); }
+.pz-card.completed { border-left: 3.5px solid var(--c-primary); }
+.pz-card.pending { border-left: 3.5px solid var(--c-warning); }
 
 .pz-card-header {
   display: flex; align-items: center; justify-content: space-between;
-  border-bottom: 1px solid var(--c-border); padding-bottom: 6px; gap: 6px;
+  border-bottom: 1px solid var(--c-border); padding-bottom: 4px; gap: 6px;
 }
 
 .pz-card-title {
-  font-family: var(--font-sans); font-size: 0.95rem; font-weight: 700;
-  color: var(--c-text); display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-sans); font-size: 0.9rem; font-weight: 800;
+  color: var(--c-text); display: flex; align-items: center; gap: 6px; min-width: 0;
 }
+
+.pz-well-num { white-space: nowrap; }
 
 .pz-status-badge {
   font-family: var(--font-sans); font-size: 0.65rem; font-weight: 700;
   padding: 1px 6px; border-radius: var(--r-sm); border: 1px solid var(--c-pixel-border);
+  white-space: nowrap;
 }
 
 .pz-status-badge.pending { background-color: var(--c-warning-bg); color: var(--c-warning); }
 .pz-status-badge.done { background-color: var(--c-primary-light); color: var(--c-primary); }
 
-.pz-card-actions { display: flex; align-items: center; gap: 4px; }
+.pz-card-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 
-.btn-icon-sm {
-  height: 26px; padding: 0 6px;
+.btn-icon-sq {
+  width: 26px; height: 26px; min-width: 26px; min-height: 26px;
   border-radius: var(--r-sm); border: 1.5px solid var(--c-pixel-border);
-  background-color: var(--c-surface-2); color: var(--c-text-muted);
-  font-family: var(--font-sans); font-size: 0.72rem; font-weight: 600;
-  display: inline-flex; align-items: center; justify-content: center; gap: 2px;
-  cursor: pointer; box-shadow: var(--shadow-pixel); white-space: nowrap;
+  background-color: var(--c-surface-2); color: var(--c-text);
+  font-size: 0.8rem; display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; box-shadow: var(--shadow-pixel); transition: transform 0.1s ease;
 }
 
-.btn-icon-sm:hover { color: var(--c-primary); border-color: var(--c-primary); }
-.btn-icon-sm.danger:hover { color: var(--c-danger); border-color: var(--c-danger); }
-.btn-icon-sm.copy-btn { color: var(--c-primary); background-color: var(--c-primary-light); }
+.btn-icon-sq:active { transform: translate(1px, 1px); }
+.btn-icon-sq.danger:hover { color: var(--c-danger); border-color: var(--c-danger); }
 
-.pz-meas-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pz-meas-grid-completed {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+}
 
-.pz-meas-box {
+.pz-meas-col {
   background-color: var(--c-surface-2); border: 1px solid var(--c-border);
-  border-radius: var(--r-sm); padding: 6px 8px; display: flex; flex-direction: column; gap: 2px;
+  border-radius: var(--r-sm); padding: 5px 8px; display: flex; flex-direction: column; gap: 1px;
 }
 
-.pz-meas-label {
-  font-family: var(--font-sans); font-size: 0.68rem; font-weight: 700;
-  color: var(--c-text-muted); text-transform: uppercase;
+.pz-meas-lbl {
+  font-family: var(--font-sans); font-size: 0.63rem; font-weight: 700;
+  color: var(--c-text-muted); text-transform: uppercase; letter-spacing: 0.02em;
 }
 
 .pz-meas-val {
-  font-family: var(--font-mono); font-size: 1rem; font-weight: 700;
-  color: var(--c-text); line-height: 1.1;
+  font-family: var(--font-mono); font-size: 0.95rem; font-weight: 800;
+  color: var(--c-text); line-height: 1.15;
 }
 
-.pz-meas-time { font-family: var(--font-mono); font-size: 0.68rem; color: var(--c-text-muted); }
+.pz-meas-time { font-family: var(--font-mono); font-size: 0.65rem; color: var(--c-text-muted); }
 
 .pz-debit-banner {
-  background-color: var(--c-surface-2);
-  border: 1.5px solid var(--c-primary);
-  border-radius: var(--r-sm); padding: 8px 10px;
+  grid-column: span 2;
+  background-color: var(--c-primary-light); border: 1.5px solid var(--c-primary);
+  border-radius: var(--r-sm); padding: 6px 10px;
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
 
-.pz-debit-title {
-  font-family: var(--font-sans); font-size: 0.68rem; font-weight: 700;
-  color: var(--c-primary); text-transform: uppercase;
+.pz-debit-banner.error {
+  background-color: rgba(239, 68, 68, 0.1); border-color: var(--c-danger);
+}
+
+.pz-debit-main {
+  display: flex; flex-direction: column; gap: 1px;
+}
+
+.pz-debit-lbl {
+  font-family: var(--font-sans); font-size: 0.63rem; font-weight: 700;
+  color: var(--c-primary); text-transform: uppercase; letter-spacing: 0.02em;
 }
 
 .pz-debit-val {
-  font-family: var(--font-mono); font-size: 1.2rem; font-weight: 700; color: var(--c-text);
+  font-family: var(--font-mono); font-size: 1.1rem; font-weight: 800; color: var(--c-text); line-height: 1.1;
 }
 
-.pz-debit-val span { font-size: 0.78rem; color: var(--c-primary); }
+.pz-debit-val small { font-size: 0.75rem; color: var(--c-primary); font-weight: 700; }
 
-.pz-debit-copy-btn {
-  height: 32px; padding: 0 8px; border-radius: var(--r-sm);
+.pz-debit-sub { font-family: var(--font-mono); font-size: 0.65rem; color: var(--c-text-muted); }
+
+.pz-copy-btn {
+  height: 28px; padding: 0 8px; border-radius: var(--r-sm);
   background-color: var(--c-primary); color: var(--c-btn-primary-text);
   border: 1.5px solid var(--c-pixel-border); font-family: var(--font-sans);
-  font-size: 0.78rem; font-weight: 700;
-  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
-  cursor: pointer; box-shadow: var(--shadow-pixel); flex-shrink: 0;
+  font-size: 0.72rem; font-weight: 700; cursor: pointer; box-shadow: var(--shadow-pixel);
+  white-space: nowrap; flex-shrink: 0;
 }
 
-.pz-inline-form {
-  border-top: 1px solid var(--c-border); padding-top: 6px; margin-top: 2px;
+.pz-pending-box {
   display: flex; flex-direction: column; gap: 6px;
 }
 
-.pz-inline-row { display: flex; gap: 6px; }
-.pz-inline-row input { height: 36px; font-size: 0.82rem; }
+.pz-quick-form {
+  background-color: var(--c-warning-bg); border: 1.5px solid var(--c-warning);
+  border-radius: var(--r-sm); padding: 6px 8px; display: flex; flex-direction: column; gap: 6px;
+}
+
+.pz-quick-lbl {
+  font-family: var(--font-sans); font-size: 0.68rem; font-weight: 700; color: var(--c-warning);
+}
+
+.pz-quick-inputs {
+  display: flex; gap: 6px; width: 100%;
+}
+
+.pz-input-field {
+  flex: 1; min-width: 0; height: 32px; padding: 0 6px;
+  background-color: var(--c-surface); color: var(--c-text);
+  border: 1px solid var(--c-border); border-radius: var(--r-sm);
+  font-size: 0.8rem; font-family: var(--font-mono); outline: none;
+}
+
+.pz-input-field:focus { border-color: var(--c-warning); }
 
 .btn-calc-pz {
-  height: 36px; background-color: var(--c-success); color: var(--c-btn-primary-text);
+  width: 100%; height: 32px;
+  background-color: var(--c-success); color: var(--c-btn-primary-text);
   border: 1.5px solid var(--c-pixel-border); border-radius: var(--r-sm);
-  font-family: var(--font-sans); font-size: 0.8rem; font-weight: 700;
+  font-family: var(--font-sans); font-size: 0.78rem; font-weight: 700;
   cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
-  box-shadow: var(--shadow-pixel);
+  box-shadow: var(--shadow-pixel); white-space: nowrap;
 }
 
 /* ── 8. BUTTONS & FORMS ──────────────────────────────────── */

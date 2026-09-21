@@ -13,6 +13,7 @@ const App = {
   ruler: 0,
   prevMeter: null,
   prevMeas: null,
+  autoCalcQ: null,
   patrolFilter: 'all',
   pzFilter: 'all',
   sortMode: localStorage.getItem('dng_sort_mode') || 'num',
@@ -545,14 +546,13 @@ async function openMeasure(well) {
   document.getElementById('prev-meter-text').textContent =
     prevQ != null ? `Последний: ${prevQ} м³${prevTimeStr}` : 'Последний: нет';
 
-  // Установить последние данные как подсказки (placeholder) для полей, кроме примечания
+  // Установить подсказки (placeholder) для полей, кроме Q факт (оставляем пустым без подсказок)
   document.getElementById('input-meter').placeholder   = prevMeas?.meter_reading != null ? prevMeas.meter_reading : '0';
-  document.getElementById('input-flow').placeholder    = prevMeas?.flow_rate_q != null ? prevMeas.flow_rate_q : '0.0';
+  document.getElementById('input-flow').placeholder    = '';
   document.getElementById('input-pbuf').placeholder    = prevMeas?.p_buf != null ? prevMeas.p_buf : '0.0';
   document.getElementById('input-pzat').placeholder    = prevMeas?.p_zat != null ? prevMeas.p_zat : '0.0';
   document.getElementById('input-temp').placeholder    = prevMeas?.temperature != null ? prevMeas.temperature : '0';
   document.getElementById('input-strokes').placeholder = prevMeas?.strokes_per_minute != null ? prevMeas.strokes_per_minute : '0';
-
   const ex = await getMeasurementByDate(well.id, d);
   const fields = {
     'input-time':    ex?.time ?? now(),
@@ -565,6 +565,9 @@ async function openMeasure(well) {
     'input-notes':   ex?.notes ?? '',
   };
   Object.entries(fields).forEach(([id, v]) => document.getElementById(id).value = v);
+
+  // Инициализация авторасчета Q
+  updateAutoCalc();
 
   // Сброс переключателя П/З
   const pzToggle = document.getElementById('input-pz-clone');
@@ -579,6 +582,37 @@ async function openMeasure(well) {
 
   modal.classList.remove('hidden');
   requestAnimationFrame(() => document.getElementById('input-meter').focus());
+}
+
+function updateAutoCalc() {
+  const meter = document.getElementById('input-meter');
+  const flow = document.getElementById('input-flow');
+  const badge = document.getElementById('flow-autocalc-badge');
+  if (!badge || !flow || !meter) return;
+
+  const v = parseFloat(meter.value);
+  if (!isNaN(v) && App.prevMeter != null) {
+    const diff = v - App.prevMeter;
+    if (diff >= 0) {
+      const qVal = formatQ(diff);
+      App.autoCalcQ = qVal;
+      badge.textContent = `⚡ ${qVal} м³`;
+    } else {
+      App.autoCalcQ = null;
+      badge.textContent = `⚡ Авто`;
+    }
+  } else {
+    App.autoCalcQ = null;
+    badge.textContent = `⚡ Авто`;
+  }
+
+  // Бокс авторасчета виден ВСЕГДА, пока поле input-flow пустое,
+  // и скрывается ТОЛЬКО тогда, когда пользователь начинает вводить значение вручную.
+  if (flow.value.trim() === '') {
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
 }
 
 function initMeasureForm() {
@@ -605,21 +639,13 @@ function initMeasureForm() {
   const pbuf = document.getElementById('input-pbuf');
   const pzat = document.getElementById('input-pzat');
 
-  // Расчет Q с новыми правилами округления
   meter.addEventListener('input', () => {
-    const v = parseFloat(meter.value);
-    if (!isNaN(v) && App.prevMeter != null) {
-      const diff = v - App.prevMeter;
-      if (diff >= 0) {
-        flow.value = formatQ(diff);
-        document.getElementById('flow-autocalc-badge')?.classList.remove('hidden');
-      }
-    }
+    updateAutoCalc();
     checkAnomalies();
   });
 
   flow.addEventListener('input', () => {
-    document.getElementById('flow-autocalc-badge')?.classList.add('hidden');
+    updateAutoCalc();
     checkAnomalies();
   });
   pbuf.addEventListener('input', checkAnomalies);
@@ -627,6 +653,9 @@ function initMeasureForm() {
 
   document.getElementById('form-measure').addEventListener('submit', async e => {
     e.preventDefault();
+    if (flow.value.trim() === '' && App.autoCalcQ != null) {
+      flow.value = App.autoCalcQ;
+    }
     const num = id => { const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? null : v; };
 
     const wellId = document.getElementById('form-well-id').value;

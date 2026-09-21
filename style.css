@@ -646,14 +646,20 @@ input::placeholder { color: var(--c-text-dim); }
 }
 .input-badge-wrap input {
   width: 100%;
-  padding-right: 75px;
+  padding-right: 115px;
 }
 .autocalc-badge {
   position: absolute;
-  right: 8px;
-  padding: 2px 7px;
-  font-family: var(--font-sans);
-  font-size: 0.72rem;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
   font-weight: 700;
   color: var(--c-btn-primary-text);
   background-color: var(--c-primary);
@@ -661,6 +667,7 @@ input::placeholder { color: var(--c-text-dim); }
   border-radius: var(--r-sm);
   pointer-events: none;
   user-select: none;
+  white-space: nowrap;
 }
 .autocalc-badge.hidden {
   display: none !important;

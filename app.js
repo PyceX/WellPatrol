@@ -10,6 +10,7 @@ const App = {
   ptv: localStorage.getItem('dng_active_ptv') || '11',
   gps: null,
   wells: [],
+  allWells: [],
   ruler: 0,
   prevMeter: null,
   prevMeas: null,
@@ -68,7 +69,7 @@ function initTheme() {
 }
 
 /* ── Утилиты ─────────────────────────────────────────────── */
-const today = () => new Date().toISOString().split('T')[0];
+const today = () => new Date().toLocaleDateString('en-CA');
 const now = () => new Date().toTimeString().substring(0, 5);
 const fmt = v => (v != null && v !== '') ? v : '—';
 
@@ -146,10 +147,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   initMeasureForm();
   initExport();
   initExportModal();
+  initExcelReportModal();
   initPz();
   initSearch();
   initAddWell();
   initScanOcr();
+  initBulkEdit();
 
   document.getElementById('report-date').value = today();
   document.getElementById('export-date').value = today();
@@ -222,9 +225,73 @@ function initSort() {
   });
 }
 
+/* ── Поиск скважины и проверка в БД строго в текущем ПТВ ─ */
+function findWellInDb(wellNumberStr) {
+  if (!wellNumberStr) return null;
+  const clean = String(wellNumberStr).trim().toUpperCase();
+  if (!clean) return null;
+
+  // Ищем СТРОГО в скважинах текущего выбранного ПТВ (App.wells)
+  const ptvWells = App.wells || [];
+  return ptvWells.find(w => String(w.well_number).trim().toUpperCase() === clean) || null;
+}
+
+/* ── Поиск скважины по номеру во всей БД (любой ПТВ) ───── */
+function findWellByNumber(wellNumberStr) {
+  if (!wellNumberStr) return null;
+  const clean = String(wellNumberStr).trim().toUpperCase();
+  if (!clean) return null;
+  const all = App.allWells && App.allWells.length ? App.allWells : [];
+  return all.find(w => String(w.well_number).trim().toUpperCase() === clean) || null;
+}
+
+function getPtvForWellNumber(wellNumberStr, fallbackPtv = null) {
+  if (!wellNumberStr) return fallbackPtv || App.ptv;
+  const well = findWellByNumber(wellNumberStr);
+  if (well && well.ptv != null) return well.ptv;
+  return fallbackPtv || App.ptv;
+}
+
+function updatePzPtvBadge(inputElem, badgeElem) {
+  if (!inputElem || !badgeElem) return;
+  const val = inputElem.value.trim();
+  const well = val ? findWellByNumber(val) : null;
+  if (well && well.ptv != null) {
+    badgeElem.className = 'well-db-badge exist';
+    badgeElem.textContent = `✓ ПТВ-${well.ptv}`;
+  } else {
+    badgeElem.className = 'well-db-badge empty';
+    badgeElem.textContent = `ПТВ-${App.ptv}`;
+  }
+}
+
+function updateWellDbBadge(inputElem) {
+  const tr = inputElem.closest('tr');
+  if (!tr) return;
+  const badgeCell = tr.querySelector('.well-status-cell');
+  if (!badgeCell) return;
+
+  const val = inputElem.value.trim();
+  const match = findWellInDb(val);
+
+  if (match) {
+    badgeCell.innerHTML = `<span class="well-db-badge exist" title="Скважина найдена в ПТВ-${App.ptv}">✓ ПТВ-${App.ptv}</span>`;
+    tr.classList.remove('unmatched');
+  } else if (val) {
+    badgeCell.innerHTML = `<span class="well-db-badge not-exist" title="Скважина № ${val} отсутствует в ПТВ-${App.ptv}! Не будет сохранена!">❌ Нет в ПТВ-${App.ptv}</span>`;
+    tr.classList.add('unmatched');
+  } else {
+    badgeCell.innerHTML = `<span class="well-db-badge empty">—</span>`;
+    tr.classList.remove('unmatched');
+  }
+}
+
 /* ── Обновить всё ────────────────────────────────────────── */
 async function refresh() {
-  App.wells = await getWellsByPtv(App.ptv);
+  App.allWells = await getAllWells();
+  App.wells = App.allWells
+    .filter(w => Number(w.ptv) === Number(App.ptv))
+    .sort((a, b) => a.well_number.localeCompare(b.well_number, undefined, { numeric: true }));
   await renderPatrol();
   await renderReport();
   await renderPz();
@@ -377,8 +444,8 @@ async function renderReport() {
       <td><b>${qDisplay}</b></td>
       <td>${fmt(m.p_buf)}</td>
       <td>${fmt(m.p_zat)}</td>
-      <td>${fmt(m.temperature)}</td>
       <td>${fmt(m.strokes_per_minute)}</td>
+      <td>${fmt(m.temperature)}</td>
       <td>${m.time || '—'}</td>
       <td class="td-notes">${m.notes || ''}</td>`;
     
@@ -551,8 +618,8 @@ async function openMeasure(well) {
   document.getElementById('input-flow').placeholder    = '';
   document.getElementById('input-pbuf').placeholder    = prevMeas?.p_buf != null ? prevMeas.p_buf : '0.0';
   document.getElementById('input-pzat').placeholder    = prevMeas?.p_zat != null ? prevMeas.p_zat : '0.0';
-  document.getElementById('input-temp').placeholder    = prevMeas?.temperature != null ? prevMeas.temperature : '0';
   document.getElementById('input-strokes').placeholder = prevMeas?.strokes_per_minute != null ? prevMeas.strokes_per_minute : '0';
+  document.getElementById('input-temp').placeholder    = prevMeas?.temperature != null ? prevMeas.temperature : '0';
   const ex = await getMeasurementByDate(well.id, d);
   const fields = {
     'input-time':    ex?.time ?? now(),
@@ -560,8 +627,8 @@ async function openMeasure(well) {
     'input-flow':    ex?.flow_rate_q ?? '',
     'input-pbuf':    ex?.p_buf ?? (prevMeas?.p_buf ?? ''),
     'input-pzat':    ex?.p_zat ?? (prevMeas?.p_zat ?? ''),
-    'input-temp':    ex?.temperature ?? (prevMeas?.temperature ?? ''),
     'input-strokes': ex?.strokes_per_minute ?? (prevMeas?.strokes_per_minute ?? ''),
+    'input-temp':    ex?.temperature ?? (prevMeas?.temperature ?? ''),
     'input-notes':   ex?.notes ?? '',
   };
   Object.entries(fields).forEach(([id, v]) => document.getElementById(id).value = v);
@@ -672,26 +739,26 @@ function initMeasureForm() {
       flow_rate_q: num('input-flow'),
       p_buf: num('input-pbuf'),
       p_zat: num('input-pzat'),
-      temperature: num('input-temp'),
       strokes_per_minute: num('input-strokes'),
+      temperature: num('input-temp'),
       notes: mNotes,
       timestamp: Date.now(),
     });
 
     const isPzChecked = document.getElementById('input-pz-clone')?.checked;
     if (isPzChecked) {
-      const wellObj = App.wells.find(w => w.id === wellId);
+      const wellObj = App.wells.find(w => w.id === wellId) || findWellByNumber(wellId);
       const wellNum = wellObj ? wellObj.well_number : wellId.replace(/^[0-9]+-/, '');
+      const targetPtv = wellObj ? wellObj.ptv : getPtvForWellNumber(wellNum, App.ptv);
 
       await savePzRecord({
         well_number: wellNum,
         well_id: wellId,
-        ptv: App.ptv,
+        ptv: targetPtv,
         val_1: mMeter,
         time_1: (mDate && mTime) ? `${mDate}T${mTime}` : '',
         val_2: null,
         time_2: null,
-        notes: mNotes,
         timestamp: Date.now(),
       });
       toast('✓ Сохранено и скопировано в П/З', 'success');
@@ -879,14 +946,14 @@ function initExport() {
       wells.sort((a, b) => a.well_number.localeCompare(b.well_number, undefined, { numeric: true }));
     }
 
-    let csv = '\uFEFFСкважина;ПТВ;Показания;Q факт;P буф;P зат;t°C;Об/Чк;Время;Дата;Примечание\n';
+    let csv = '\uFEFFСкважина;ПТВ;Показания;Q факт;P буф;P зат;Об/Чк;t°C;Время;Дата;Примечание\n';
     wells.forEach(w => {
       const m = map.get(w.id) || {};
       csv += [
         w.well_number, w.ptv,
         m.meter_reading ?? '', m.flow_rate_q ?? '',
         m.p_buf ?? '', m.p_zat ?? '',
-        m.temperature ?? '', m.strokes_per_minute ?? '',
+        m.strokes_per_minute ?? '', m.temperature ?? '',
         m.time ?? '', date,
         `"${(m.notes || '').replace(/"/g, '""')}"`,
       ].join(';') + '\n';
@@ -1017,6 +1084,15 @@ function initPz() {
     });
   }
 
+  // Динамическое обновление индикатора ПТВ при вводе скважины
+  document.getElementById('pz-edit-well-number')?.addEventListener('input', function() {
+    updatePzPtvBadge(this, document.getElementById('pz-edit-ptv-badge'));
+  });
+
+  document.getElementById('pz-clone-well-number')?.addEventListener('input', function() {
+    updatePzPtvBadge(this, document.getElementById('pz-clone-ptv-badge'));
+  });
+
   // Кнопка "+ П/З" (Ручное добавление)
   document.getElementById('btn-add-pz-manual')?.addEventListener('click', () => {
     openPzEditModal();
@@ -1039,22 +1115,21 @@ function initPz() {
     const v2Raw = document.getElementById('pz-edit-v2').value;
     const v2 = v2Raw !== '' ? parseFloat(v2Raw) : null;
     const t2 = document.getElementById('pz-edit-t2').value || null;
-    const notesInput = document.getElementById('pz-edit-notes');
-    const notes = notesInput ? notesInput.value.trim() : '';
 
     if (!wellNum || isNaN(v1)) {
       toast('Заполните номер скважины и Замер 1', 'error');
       return;
     }
 
+    const targetPtv = getPtvForWellNumber(wellNum, App.ptv);
+
     const record = {
       well_number: wellNum,
-      ptv: App.ptv,
+      ptv: targetPtv,
       val_1: v1,
       time_1: t1,
       val_2: isNaN(v2) ? null : v2,
       time_2: t2,
-      notes,
       timestamp: Date.now(),
     };
     if (idVal) record.id = Number(idVal);
@@ -1093,15 +1168,15 @@ function initPz() {
 
     const startVal = sourceOpt === '2' ? sourceRecord.val_2 : sourceRecord.val_1;
     const startTime = sourceOpt === '2' ? sourceRecord.time_2 : sourceRecord.time_1;
+    const targetPtv = getPtvForWellNumber(newWellNum, sourceRecord.ptv || App.ptv);
 
     const newRecord = {
       well_number: newWellNum,
-      ptv: sourceRecord.ptv || App.ptv,
+      ptv: targetPtv,
       val_1: startVal,
       time_1: startTime || getLocalDatetime(),
       val_2: null,
       time_2: null,
-      notes: `Клон с №${sourceRecord.well_number}`,
       timestamp: Date.now(),
     };
 
@@ -1123,13 +1198,14 @@ function initPz() {
 function openPzEditModal(record = null) {
   const modal = document.getElementById('modal-pz-edit');
   document.getElementById('pz-edit-id').value = record ? record.id : '';
-  document.getElementById('pz-edit-well-number').value = record ? record.well_number : '';
+  const wellNumInput = document.getElementById('pz-edit-well-number');
+  wellNumInput.value = record ? record.well_number : '';
+  updatePzPtvBadge(wellNumInput, document.getElementById('pz-edit-ptv-badge'));
+
   document.getElementById('pz-edit-v1').value = record && record.val_1 != null ? record.val_1 : '';
   document.getElementById('pz-edit-t1').value = record && record.time_1 ? record.time_1 : getLocalDatetime();
   document.getElementById('pz-edit-v2').value = record && record.val_2 != null ? record.val_2 : '';
   document.getElementById('pz-edit-t2').value = record && record.time_2 ? record.time_2 : '';
-  const notesInput = document.getElementById('pz-edit-notes');
-  if (notesInput) notesInput.value = record && record.notes ? record.notes : '';
 
   document.getElementById('pz-modal-title').textContent = record ? `Скв. № ${record.well_number}` : 'Новый перезамер';
   modal.classList.remove('hidden');
@@ -1139,7 +1215,10 @@ function openPzCloneModal(record) {
   const modal = document.getElementById('modal-pz-clone');
   document.getElementById('pz-clone-source-id').value = record.id;
   document.getElementById('pz-clone-well-name').textContent = record.well_number;
-  document.getElementById('pz-clone-well-number').value = record.well_number;
+  const cloneNumInput = document.getElementById('pz-clone-well-number');
+  cloneNumInput.value = record.well_number;
+  updatePzPtvBadge(cloneNumInput, document.getElementById('pz-clone-ptv-badge'));
+
   document.getElementById('pz-clone-v1-text').textContent = formatMeter(record.val_1);
   document.getElementById('pz-clone-t1-text').textContent = formatDateTimePz(record.time_1);
 
@@ -1246,13 +1325,14 @@ async function renderPz() {
     const res = isDone ? calculateVolume(r.val_1, r.time_1, r.val_2, r.time_2) : null;
     const card = document.createElement('div');
     card.className = `pz-card ${isDone ? 'completed' : 'pending'}`;
+    const ptvVal = getPtvForWellNumber(r.well_number, r.ptv);
 
     if (isDone) {
       card.innerHTML = `
         <div class="pz-card-header">
           <div class="pz-card-title">
             <span class="pz-well-num">Скв. № ${r.well_number}</span>
-            ${r.ptv ? `<span class="prev-badge" style="font-size:0.68rem;">ПТВ-${r.ptv}</span>` : ''}
+            ${ptvVal ? `<span class="prev-badge" style="font-size:0.68rem;">ПТВ-${ptvVal}</span>` : ''}
           </div>
           <div class="pz-card-actions">
             <button type="button" class="btn-icon-sq btn-pz-clone" title="Клонировать">📋</button>
@@ -1287,7 +1367,7 @@ async function renderPz() {
         <div class="pz-card-header">
           <div class="pz-card-title">
             <span class="pz-well-num">Скв. № ${r.well_number}</span>
-            ${r.ptv ? `<span class="prev-badge" style="font-size:0.68rem;">ПТВ-${r.ptv}</span>` : ''}
+            ${ptvVal ? `<span class="prev-badge" style="font-size:0.68rem;">ПТВ-${ptvVal}</span>` : ''}
             <span class="pz-status-badge pending">1-й замер</span>
           </div>
           <div class="pz-card-actions">
@@ -1332,8 +1412,6 @@ async function renderPz() {
 }
 
 /* ── Импорт рапорта с фото через ИИ ───────── */
-let scanParsedRecords = [];
-let scanReportDate = today();
 
 function initScanOcr() {
   const btnOpen = document.getElementById('btn-open-scan');
@@ -1345,6 +1423,8 @@ function initScanOcr() {
   const fileInput = document.getElementById('input-report-photo');
   const btnApply = document.getElementById('btn-apply-scan');
   const checkAll = document.getElementById('scan-check-all');
+  const dateInput = document.getElementById('scan-input-date');
+  const btnAddRow = document.getElementById('btn-scan-add-row');
 
   if (!btnOpen || !modal) return;
 
@@ -1359,6 +1439,10 @@ function initScanOcr() {
     document.getElementById('scan-step-2').classList.add('hidden');
 
     fileInput.value = '';
+    if (dateInput) {
+      dateInput.value = '';
+      dateInput.classList.remove('input-error');
+    }
     modal.classList.remove('hidden');
   });
 
@@ -1373,6 +1457,26 @@ function initScanOcr() {
       localStorage.setItem('gemini_api_key', val);
     }
   });
+
+  if (dateInput) {
+    dateInput.addEventListener('change', () => {
+      if (dateInput.value.trim()) {
+        dateInput.classList.remove('input-error');
+      }
+    });
+  }
+
+  if (btnAddRow) {
+    btnAddRow.addEventListener('click', () => {
+      const tbody = document.getElementById('scan-table-body');
+      if (!tbody) return;
+      const tr = createScanTableRow({ time: now() });
+      tbody.appendChild(tr);
+      updateScanCount();
+      const firstIn = tr.querySelector('.in-well');
+      if (firstIn) firstIn.focus();
+    });
+  }
 
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files[0];
@@ -1394,36 +1498,28 @@ function initScanOcr() {
       const base64Data = await fileToBase64(file);
       const mimeType = file.type || 'image/jpeg';
 
-      const promptText = `Ты — эксперт по распознаванию промысловой документации нефтяных месторождений.
-Перед тобой фото рукописного суточного рапорта операторов (Каражанбас).
-Проанализируй таблицу и извлеки данные по ВСЕМ скважинам строго в формате JSON.
+      const promptText = `Ты — эксперт по распознаванию промысловой документации и суточных рапортов операторов добычи нефти (Тәуліктік рапорты).
+Внимательно проанализируй фото рукописного суточного рапорта и извлеки данные по скважинам.
 
-Формат ответа STRICT JSON (без маркдауна, без \`\`\`json):
-{
-  "date": "YYYY-MM-DD",
-  "records": [
-    {
-      "well_number": "номер скважины, напр. '1170', '1171', '1260G', '1261'",
-      "meter_reading": "показание счётчика (строка или число), напр '77619723' или '2 стук'",
-      "flow_rate_q": число_Q_нақты_или_null,
-      "p_buf": число_P_буф_или_null,
-      "p_zat": число_P_зат_или_null,
-      "temperature": число_температуры_или_null,
-      "strokes_per_minute": число_об_мин_или_null,
-      "time": "HH:MM"
-    }
-  ]
-}`;
+Правила считывания рукописного текста:
+1. 'well_number': Номер скважины из колонки "Ұңғы №" (напр. '1686', '1688', '1799', '1800', '391D', '1263G'). Извлекай ТОЛЬКО номер скважины без лишних слов.
+2. 'meter_reading': Показания из колонки "Есептегіш көрсеткіштері". Если замера нет — null.
+3. 'flow_rate_q': Значение дебита из колонки "Q нақты". (напр. '16', '79').
+4. 'p_buf': Буферное давление из колонки "P буф" (напр. 3.5, 2). Не путай с затрубным давлением.
+5. 'p_zat': Затрубное давление из колонки "P зат" (напр. 2.5, 1.5, 0, 0.2).
+6. 'strokes_per_minute': Обороты из колонки "об/мин" или Чк (напр. 120, 280, 3, 220, 160, 370). Если колонка пуста — null.
+7. 'temperature': Температура "T°C". Если колонка пуста — null.
+8. 'time': Время замера из колонки "Уақыты" в формате HH:MM (напр. '08:14', '08:16', '08:50'). Если колонка пуста — null.
+
+Строго сопоставляй значения по строкам таблицы. Не смещай колонки.`;
 
       const rawText = await callGeminiVisionApi(apiKey, mimeType, base64Data, promptText);
 
-      const cleanJson = rawText.replace(/```json|```/g, '').trim();
-      const parsed = JSON.parse(cleanJson);
+      // Благодаря responseMimeType: application/json ответ гарантированно чистый JSON
+      const parsed = JSON.parse(rawText);
+      const records = parsed.records || [];
 
-      scanReportDate = parsed.date || today();
-      scanParsedRecords = parsed.records || [];
-
-      renderScanPreviewTable(scanParsedRecords, scanReportDate);
+      renderScanPreviewTable(records);
 
       document.getElementById('scan-loading').classList.add('hidden');
       document.getElementById('scan-step-2').classList.remove('hidden');
@@ -1442,10 +1538,21 @@ function initScanOcr() {
   });
 
   btnApply.addEventListener('click', async () => {
+    const importDate = dateInput?.value?.trim();
+
+    if (!importDate) {
+      toast('⚠️ Пожалуйста, укажите дату рапорта вручную!', 'error');
+      if (dateInput) {
+        dateInput.classList.add('input-error');
+        dateInput.focus();
+      }
+      return;
+    }
+    if (dateInput) dateInput.classList.remove('input-error');
+
     const rows = document.querySelectorAll('#scan-table-body tr');
     let importedCount = 0;
-
-    const importDate = document.getElementById('scan-input-date')?.value || scanReportDate || today();
+    let skippedCount = 0;
 
     for (const row of rows) {
       const check = row.querySelector('.scan-row-check');
@@ -1454,8 +1561,15 @@ function initScanOcr() {
       const wellNumber = row.querySelector('.in-well')?.value?.trim();
       if (!wellNumber) continue;
 
-      const wellObj = App.wells.find(w => w.well_number === wellNumber);
-      const wellId = wellObj ? wellObj.id : `11-${wellNumber}`;
+      // ПРОВЕРКА СТРОГО ПО ВЫБРАННОМУ ПТВ (App.wells)
+      const matchedWell = findWellInDb(wellNumber);
+      if (!matchedWell) {
+        // Если скважины нет в выбранном ПТВ — НЕ сохранять в БД!
+        skippedCount++;
+        continue;
+      }
+
+      const wellId = matchedWell.id;
 
       const meterVal = row.querySelector('.in-meter')?.value?.trim() || null;
       const numOrNull = el => {
@@ -1471,8 +1585,8 @@ function initScanOcr() {
         flow_rate_q: numOrNull(row.querySelector('.in-q')),
         p_buf: numOrNull(row.querySelector('.in-pbuf')),
         p_zat: numOrNull(row.querySelector('.in-pzat')),
-        temperature: numOrNull(row.querySelector('.in-temp')),
         strokes_per_minute: numOrNull(row.querySelector('.in-strokes')),
+        temperature: numOrNull(row.querySelector('.in-temp')),
         notes: 'Импортировано с фото рапорта',
         timestamp: Date.now()
       });
@@ -1480,76 +1594,115 @@ function initScanOcr() {
       importedCount++;
     }
 
-    toast(`✓ Успешно импортировано ${importedCount} замеров`, 'success');
+    if (importedCount > 0) {
+      const skipMsg = skippedCount > 0 ? ` (пропущено ${skippedCount} скв. не из ПТВ-${App.ptv})` : '';
+      toast(`✓ Успешно импортировано ${importedCount} замеров для ПТВ-${App.ptv}${skipMsg}`, 'success');
+    } else {
+      toast(`⚠️ Ни один замер не сохранен: скважины отсутствуют в ПТВ-${App.ptv}`, 'error');
+    }
+
     close();
     await refresh();
   });
 }
 
 async function callGeminiVisionApi(apiKey, mimeType, base64Data, promptText) {
-  let candidateModels = [
-    'gemini-3.5-flash-lite',
-    'gemini-3.1-flash-lite'
-  ];
+  const model = 'gemini-3.5-flash-lite';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-  try {
-    const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-    if (listRes.ok) {
-      const listData = await listRes.json();
-      const models = listData.models || [];
-      const supported = models
-        .filter(m => m.name.includes('gemini-3.5-flash-lite') || m.name.includes('gemini-3.1-flash-lite'))
-        .map(m => m.name.replace(/^models\//, ''));
-      if (supported.length > 0) {
-        candidateModels = [...new Set([...supported, ...candidateModels])];
-      }
-    }
-  } catch (e) {
-    console.warn('Cannot list models:', e);
-  }
-
-  let lastError = null;
-  for (const model of candidateModels) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { inline_data: { mime_type: mimeType, data: base64Data } },
-                { text: promptText }
-              ]
+  // Строгая JSON-схема согласно структуре таблицы рапорта
+  const jsonSchema = {
+    type: 'OBJECT',
+    properties: {
+      records: {
+        type: 'ARRAY',
+        description: 'Список замеров по скважинам из рапорта',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            well_number: { 
+              type: 'STRING', 
+              description: 'Номер скважины (напр. 1686, 1799, 1263G, без лишних символов)' 
+            },
+            meter_reading: { 
+              type: 'NUMBER', 
+              nullable: true, 
+              description: 'Показания счетчика (напр. 6386285)' 
+            },
+            flow_rate_q: { 
+              type: 'NUMBER', 
+              nullable: true, 
+              description: 'Фактический дебит жидкости Q нақты (м³/сут)' 
+            },
+            p_buf: { 
+              type: 'NUMBER', 
+              nullable: true, 
+              description: 'Буферное давление P буф (атм)' 
+            },
+            p_zat: { 
+              type: 'NUMBER', 
+              nullable: true, 
+              description: 'Затрубное давление P зат (атм)' 
+            },
+            strokes_per_minute: { 
+              type: 'NUMBER', 
+              nullable: true, 
+              description: 'Число качаний / об/мин / Чк' 
+            },
+            temperature: { 
+              type: 'NUMBER', 
+              nullable: true, 
+              description: 'Температура жидкости t°C' 
+            },
+            time: { 
+              type: 'STRING', 
+              nullable: true, 
+              description: 'Время замера в формате HH:MM (напр. 08:14)' 
             }
-          ],
-          generationConfig: { temperature: 0.1 }
-        })
-      });
+          },
+          required: ['well_number']
+        }
+      }
+    },
+    required: ['records']
+  };
 
-      const resData = await res.json().catch(() => ({}));
-      if (res.ok && resData.candidates?.[0]?.content?.parts?.[0]?.text) {
-        return resData.candidates[0].content.parts[0].text;
+  const requestBody = {
+    contents: [
+      {
+        parts: [
+          {
+            inline_data: {
+              mime_type: mimeType,
+              data: base64Data
+            }
+          },
+          {
+            text: promptText
+          }
+        ]
       }
-
-      const msg = resData.error?.message || `Status ${res.status}`;
-      lastError = new Error(msg);
-      if (res.status === 404 || msg.includes('not found') || msg.includes('is not found')) {
-        continue;
-      } else {
-        throw new Error(msg);
-      }
-    } catch (err) {
-      lastError = err;
-      if (err.message.includes('not found') || err.message.includes('404')) {
-        continue;
-      }
-      throw err;
+    ],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: jsonSchema
     }
+  };
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestBody)
+  });
+
+  const resData = await res.json().catch(() => ({}));
+
+  if (res.ok && resData.candidates?.[0]?.content?.parts?.[0]?.text) {
+    return resData.candidates[0].content.parts[0].text;
   }
 
-  throw lastError || new Error('Модели Gemini оказались недоступны');
+  const msg = resData.error?.message || `Ошибка сервера: Status ${res.status}`;
+  throw new Error(msg);
 }
 
 function fileToBase64(file) {
@@ -1565,33 +1718,652 @@ function fileToBase64(file) {
   });
 }
 
-function renderScanPreviewTable(records, dateStr) {
-  const dateInput = document.getElementById('scan-input-date');
-  if (dateInput) dateInput.value = dateStr || today();
-  document.getElementById('scan-count-text').innerHTML = `Найдено: <b>${records.length}</b> замеров`;
+function createScanTableRow(rec = {}) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="checkbox" class="scan-row-check" checked></td>
+    <td><input type="text" class="in-well" value="${rec.well_number || ''}" style="width:55px;"></td>
+    <td class="well-status-cell"></td>
+    <td><input type="number" step="any" class="in-meter" value="${rec.meter_reading ?? ''}" style="width:75px;"></td>
+    <td><input type="number" step="any" class="in-q" value="${rec.flow_rate_q ?? ''}" style="width:45px;"></td>
+    <td><input type="number" step="0.1" class="in-pbuf" value="${rec.p_buf ?? ''}" style="width:45px;"></td>
+    <td><input type="number" step="0.1" class="in-pzat" value="${rec.p_zat ?? ''}" style="width:45px;"></td>
+    <td><input type="number" step="1" class="in-strokes" value="${rec.strokes_per_minute ?? ''}" style="width:45px;"></td>
+    <td><input type="number" step="1" class="in-temp" value="${rec.temperature ?? ''}" style="width:40px;"></td>
+    <td><input type="text" class="in-time" value="${rec.time || ''}" style="width:50px;"></td>
+    <td><button type="button" class="btn-del-row" title="Удалить строку">&times;</button></td>
+  `;
 
+  const wellIn = tr.querySelector('.in-well');
+  wellIn.addEventListener('input', () => updateWellDbBadge(wellIn));
+  updateWellDbBadge(wellIn);
+
+  tr.querySelector('.btn-del-row').addEventListener('click', () => {
+    tr.remove();
+    updateScanCount();
+  });
+
+  return tr;
+}
+
+function renderScanPreviewTable(records) {
+  updateScanCount(records ? records.length : 0);
   const tbody = document.getElementById('scan-table-body');
+  if (!tbody) return;
+
   const frag = document.createDocumentFragment();
 
-  records.forEach((rec, idx) => {
-    const isMatched = App.wells.some(w => w.well_number === String(rec.well_number));
-    const tr = document.createElement('tr');
-    if (!isMatched) tr.className = 'unmatched';
-
-    tr.innerHTML = `
-      <td><input type="checkbox" class="scan-row-check" checked></td>
-      <td><input type="text" class="in-well" value="${rec.well_number || ''}" style="width:55px;"></td>
-      <td><input type="text" class="in-meter" value="${rec.meter_reading ?? ''}" style="width:75px;"></td>
-      <td><input type="number" step="any" class="in-q" value="${rec.flow_rate_q ?? ''}" style="width:45px;"></td>
-      <td><input type="number" step="0.1" class="in-pbuf" value="${rec.p_buf ?? ''}" style="width:45px;"></td>
-      <td><input type="number" step="0.1" class="in-pzat" value="${rec.p_zat ?? ''}" style="width:45px;"></td>
-      <td><input type="number" step="1" class="in-temp" value="${rec.temperature ?? ''}" style="width:40px;"></td>
-      <td><input type="number" step="1" class="in-strokes" value="${rec.strokes_per_minute ?? ''}" style="width:45px;"></td>
-      <td><input type="text" class="in-time" value="${rec.time || ''}" style="width:50px;"></td>
-    `;
+  (records || []).forEach(rec => {
+    const tr = createScanTableRow(rec);
     frag.appendChild(tr);
   });
 
   tbody.innerHTML = '';
   tbody.appendChild(frag);
+  updateScanCount();
+}
+
+function updateScanCount(forcedCount = null) {
+  const tbody = document.getElementById('scan-table-body');
+  const count = forcedCount !== null ? forcedCount : (tbody ? tbody.querySelectorAll('tr').length : 0);
+  const tag = document.getElementById('scan-count-text');
+  if (tag) tag.innerHTML = `Найдено: <b>${count}</b> замеров (ПТВ-${App.ptv})`;
+}
+
+/* ── Массовое добавление / редактирование / удаление ───── */
+function initBulkEdit() {
+  const btnOpen = document.getElementById('btn-open-bulk-edit');
+  const modal = document.getElementById('modal-bulk-edit');
+  const btnClose = document.getElementById('btn-close-bulk-edit');
+  const btnCancel = document.getElementById('btn-cancel-bulk-edit');
+  const backdrop = document.getElementById('bulk-edit-backdrop');
+  const dateInput = document.getElementById('bulk-input-date');
+  const btnLoad = document.getElementById('btn-bulk-load-date');
+  const btnFillPtv = document.getElementById('btn-bulk-fill-ptv');
+  const btnAddRow = document.getElementById('btn-bulk-add-row');
+  const btnDeleteSelected = document.getElementById('btn-bulk-delete-selected');
+  const btnApply = document.getElementById('btn-apply-bulk-edit');
+  const checkAll = document.getElementById('bulk-check-all');
+  const tbody = document.getElementById('bulk-table-body');
+
+  if (!btnOpen || !modal) return;
+
+  let deletedDbIds = [];
+
+  const close = () => modal.classList.add('hidden');
+
+  btnOpen.addEventListener('click', async () => {
+    deletedDbIds = [];
+    const activeReportDate = document.getElementById('report-date')?.value || today();
+    dateInput.value = activeReportDate;
+    dateInput.classList.remove('input-error');
+    modal.classList.remove('hidden');
+    await loadBulkDataForDate(activeReportDate);
+  });
+
+  btnClose.addEventListener('click', close);
+  btnCancel.addEventListener('click', close);
+  backdrop.addEventListener('click', close);
+
+  dateInput.addEventListener('change', async () => {
+    const val = dateInput.value.trim();
+    if (val) {
+      dateInput.classList.remove('input-error');
+      await loadBulkDataForDate(val);
+    }
+  });
+
+  btnLoad.addEventListener('click', async () => {
+    const val = dateInput.value.trim();
+    if (!val) {
+      toast('Укажите дату рапорта!', 'error');
+      dateInput.classList.add('input-error');
+      return;
+    }
+    await loadBulkDataForDate(val);
+  });
+
+  btnFillPtv.addEventListener('click', () => {
+    const ptvWells = App.wells || [];
+    if (ptvWells.length === 0) {
+      toast(`Нет скважин для ПТВ-${App.ptv}`, 'warning');
+      return;
+    }
+    const sortedWells = [...ptvWells].sort((a, b) => 
+      a.well_number.localeCompare(b.well_number, undefined, { numeric: true })
+    );
+    tbody.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    sortedWells.forEach(w => {
+      const tr = createBulkTableRow({ well_number: w.well_number, time: now() });
+      frag.appendChild(tr);
+    });
+    tbody.appendChild(frag);
+    updateBulkCount();
+  });
+
+  btnAddRow.addEventListener('click', () => {
+    const tr = createBulkTableRow({ time: now() });
+    tbody.appendChild(tr);
+    updateBulkCount();
+    const firstIn = tr.querySelector('.bulk-in-well');
+    if (firstIn) firstIn.focus();
+  });
+
+  btnDeleteSelected.addEventListener('click', () => {
+    const rows = tbody.querySelectorAll('tr');
+    let count = 0;
+    rows.forEach(tr => {
+      const chk = tr.querySelector('.bulk-row-check');
+      if (chk && chk.checked) {
+        const dbId = tr.dataset.dbId;
+        if (dbId) deletedDbIds.push(Number(dbId));
+        tr.remove();
+        count++;
+      }
+    });
+    updateBulkCount();
+    if (count > 0) toast(`Удалено ${count} строк из таблицы`, 'info');
+  });
+
+  checkAll.addEventListener('change', () => {
+    const isChecked = checkAll.checked;
+    tbody.querySelectorAll('.bulk-row-check').forEach(c => c.checked = isChecked);
+  });
+
+  btnApply.addEventListener('click', async () => {
+    const importDate = dateInput.value.trim();
+    if (!importDate) {
+      toast('⚠️ Пожалуйста, укажите дату рапорта!', 'error');
+      dateInput.classList.add('input-error');
+      dateInput.focus();
+      return;
+    }
+    dateInput.classList.remove('input-error');
+
+    // 1. Удаляем замеры, удалённые пользователем
+    for (const id of deletedDbIds) {
+      try { await deleteMeasurement(id); } catch (e) { console.error(e); }
+    }
+
+    // 2. Сохраняем/обновляем замеры из таблицы СТРОГО ПО ВЫБРАННОМУ ПТВ
+    const rows = tbody.querySelectorAll('tr');
+    let savedCount = 0;
+    let skippedCount = 0;
+
+    for (const tr of rows) {
+      const chk = tr.querySelector('.bulk-row-check');
+      if (!chk || !chk.checked) continue;
+
+      const wellNumber = tr.querySelector('.bulk-in-well')?.value?.trim();
+      if (!wellNumber) continue;
+
+      // ПРОВЕРКА СТРОГО ПО ВЫБРАННОМУ ПТВ (App.wells)
+      const matchedWell = findWellInDb(wellNumber);
+      if (!matchedWell) {
+        // Если скважины нет в выбранном ПТВ — НЕ сохранять в БД!
+        skippedCount++;
+        continue;
+      }
+
+      const wellId = matchedWell.id;
+
+      const meterVal = tr.querySelector('.bulk-in-meter')?.value?.trim() || null;
+      const numOrNull = el => {
+        const v = parseFloat(el?.value);
+        return isNaN(v) ? null : v;
+      };
+
+      const notesIn = tr.querySelector('.bulk-in-notes');
+      const notesVal = notesIn ? notesIn.value.trim() : (tr.dataset.notes || '');
+
+      const measData = {
+        well_id: wellId,
+        date: importDate,
+        time: tr.querySelector('.bulk-in-time')?.value?.trim() || now(),
+        meter_reading: meterVal,
+        flow_rate_q: numOrNull(tr.querySelector('.bulk-in-q')),
+        p_buf: numOrNull(tr.querySelector('.bulk-in-pbuf')),
+        p_zat: numOrNull(tr.querySelector('.bulk-in-pzat')),
+        strokes_per_minute: numOrNull(tr.querySelector('.bulk-in-strokes')),
+        temperature: numOrNull(tr.querySelector('.bulk-in-temp')),
+        notes: notesVal,
+        timestamp: Date.now()
+      };
+
+      if (tr.dataset.dbId) {
+        measData.id = Number(tr.dataset.dbId);
+      }
+
+      await saveMeasurement(measData);
+      savedCount++;
+    }
+
+    if (savedCount > 0) {
+      const skipMsg = skippedCount > 0 ? ` (пропущено ${skippedCount} скв. не из ПТВ-${App.ptv})` : '';
+      toast(`✓ Успешно сохранено ${savedCount} замеров для ПТВ-${App.ptv}${skipMsg}`, 'success');
+    } else {
+      toast(`⚠️ Ни один замер не сохранен: скважины отсутствуют в ПТВ-${App.ptv}`, 'error');
+    }
+
+    close();
+    await refresh();
+  });
+}
+
+async function loadBulkDataForDate(dateStr) {
+  const tbody = document.getElementById('bulk-table-body');
+  if (!tbody) return;
+
+  const allMeasurements = await getMeasurementsByDay(dateStr);
+  const ptvWells = App.wells || [];
+  const ptvWellIds = new Set(ptvWells.map(w => w.id));
+
+  // Фильтруем замеры СТРОГО для выбранного ПТВ
+  const measurements = (allMeasurements || []).filter(m => ptvWellIds.has(m.well_id));
+
+  // Сортируем замеры по номеру скважины в точности как в "Рапорт"
+  measurements.sort((a, b) => {
+    const wellA = ptvWells.find(w => w.id === a.well_id);
+    const wellB = ptvWells.find(w => w.id === b.well_id);
+    const numA = wellA ? wellA.well_number : String(a.well_id).replace(/^[0-9]+-/, '');
+    const numB = wellB ? wellB.well_number : String(b.well_id).replace(/^[0-9]+-/, '');
+    return numA.localeCompare(numB, undefined, { numeric: true });
+  });
+
+  const sortedPtvWells = [...ptvWells].sort((a, b) => 
+    a.well_number.localeCompare(b.well_number, undefined, { numeric: true })
+  );
+
+  tbody.innerHTML = '';
+
+  if (measurements.length > 0) {
+    const frag = document.createDocumentFragment();
+    measurements.forEach(m => {
+      const wellObj = ptvWells.find(w => w.id === m.well_id);
+      const wellNumber = wellObj ? wellObj.well_number : m.well_id.replace(/^[0-9]+-/, '');
+
+      const tr = createBulkTableRow({
+        id: m.id,
+        well_number: wellNumber,
+        meter_reading: m.meter_reading,
+        flow_rate_q: m.flow_rate_q,
+        p_buf: m.p_buf,
+        p_zat: m.p_zat,
+        strokes_per_minute: m.strokes_per_minute,
+        temperature: m.temperature,
+        time: m.time,
+        notes: m.notes
+      });
+      frag.appendChild(tr);
+    });
+    tbody.appendChild(frag);
+  } else {
+    const frag = document.createDocumentFragment();
+    sortedPtvWells.forEach(w => {
+      const tr = createBulkTableRow({ well_number: w.well_number, time: now() });
+      frag.appendChild(tr);
+    });
+    tbody.appendChild(frag);
+  }
+  updateBulkCount();
+}
+
+function createBulkTableRow(data = {}) {
+  const tr = document.createElement('tr');
+  if (data.id) tr.dataset.dbId = data.id;
+  if (data.notes) tr.dataset.notes = data.notes;
+
+  tr.innerHTML = `
+    <td><input type="checkbox" class="bulk-row-check" checked></td>
+    <td><input type="text" class="in-well bulk-in-well" value="${data.well_number || ''}" style="width:55px;"></td>
+    <td class="well-status-cell"></td>
+    <td><input type="number" step="any" class="bulk-in-meter" value="${data.meter_reading ?? ''}" style="width:75px;"></td>
+    <td><input type="number" step="any" class="bulk-in-q" value="${data.flow_rate_q ?? ''}" style="width:45px;"></td>
+    <td><input type="number" step="0.1" class="bulk-in-pbuf" value="${data.p_buf ?? ''}" style="width:45px;"></td>
+    <td><input type="number" step="0.1" class="bulk-in-pzat" value="${data.p_zat ?? ''}" style="width:45px;"></td>
+    <td><input type="number" step="1" class="bulk-in-strokes" value="${data.strokes_per_minute ?? ''}" style="width:45px;"></td>
+    <td><input type="number" step="1" class="bulk-in-temp" value="${data.temperature ?? ''}" style="width:40px;"></td>
+    <td><input type="text" class="bulk-in-time" value="${data.time || now()}" style="width:50px;"></td>
+    <td><input type="text" class="bulk-in-notes" value="${data.notes || ''}" placeholder="Прим." style="width:65px;"></td>
+    <td><button type="button" class="btn-del-row" title="Удалить строку">&times;</button></td>
+  `;
+
+  const wellIn = tr.querySelector('.bulk-in-well');
+  wellIn.addEventListener('input', () => updateWellDbBadge(wellIn));
+  updateWellDbBadge(wellIn);
+
+  tr.querySelector('.btn-del-row').addEventListener('click', () => {
+    tr.remove();
+    updateBulkCount();
+  });
+
+  return tr;
+}
+
+function updateBulkCount() {
+  const tbody = document.getElementById('bulk-table-body');
+  const count = tbody ? tbody.querySelectorAll('tr').length : 0;
+  const tag = document.getElementById('bulk-count-text');
+  if (tag) tag.innerHTML = `Записей в таблице: <b>${count}</b> (ПТВ-${App.ptv})`;
+}
+
+
+/* ── Экспорт суточного рапорта в XLSX (для печати) ────────── */
+function formatTimeHM(isoStr) {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) {
+    if (typeof isoStr === 'string' && isoStr.includes(':')) {
+      return isoStr.slice(0, 5);
+    }
+    return isoStr;
+  }
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+function initExcelReportModal() {
+  const modal = document.getElementById('modal-excel-export');
+  const openBtn = document.getElementById('btn-open-excel-export');
+  const closeBtn = document.getElementById('btn-close-excel-export');
+  const cancelBtn = document.getElementById('btn-cancel-excel-export');
+  const backdrop = document.getElementById('excel-export-backdrop');
+  const form = document.getElementById('form-excel-export');
+  const masterInput = document.getElementById('export-master-fio');
+  const operatorInput = document.getElementById('export-operator-fio');
+  const label = document.getElementById('excel-export-ptv-date-label');
+
+  if (!modal || !openBtn) return;
+  const closeModal = () => modal.classList.add('hidden');
+
+  openBtn.addEventListener('click', () => {
+    const selectedDate = document.getElementById('report-date')?.value || today();
+    const parts = selectedDate.split('-');
+    const formattedDate = (parts.length === 3) ? `${parts[2]}.${parts[1]}.${parts[0]}` : selectedDate;
+
+    if (label) {
+      label.textContent = `ПТВ-${App.ptv} | Дата: ${formattedDate}`;
+    }
+
+    if (masterInput) masterInput.value = localStorage.getItem('dng_master_fio') || '';
+    if (operatorInput) operatorInput.value = localStorage.getItem('dng_operator_fio') || '';
+
+    modal.classList.remove('hidden');
+  });
+
+  closeBtn?.addEventListener('click', closeModal);
+  cancelBtn?.addEventListener('click', closeModal);
+  backdrop?.addEventListener('click', closeModal);
+
+  form?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const masterFio = masterInput?.value.trim() || '';
+    const operatorFio = operatorInput?.value.trim() || '';
+
+    if (!masterFio || !operatorFio) {
+      toast('Заполните Ф.И.О Мастера и Оператора', 'error');
+      return;
+    }
+
+    localStorage.setItem('dng_master_fio', masterFio);
+    localStorage.setItem('dng_operator_fio', operatorFio);
+
+    closeModal();
+    try {
+      await exportExcelReport(masterFio, operatorFio);
+    } catch (err) {
+      console.error('XLSX export error:', err);
+      toast('Ошибка экспорта XLSX: ' + (err.message || err), 'error');
+    }
+  });
+}
+
+async function exportExcelReport(masterFio, operatorFio) {
+  const XlsxPopulate = window.XlsxPopulate;
+  if (!XlsxPopulate) {
+    toast('Ошибка: библиотека xlsx-populate не загружена', 'error');
+    return;
+  }
+
+  toast('⏳ Генерируем XLSX рапорт...', 'info');
+
+  const selectedDate = document.getElementById('report-date')?.value || today();
+  const parts = selectedDate.split('-');
+  const formattedDate = (parts.length === 3) ? `${parts[2]}.${parts[1]}.${parts[0]}` : selectedDate;
+
+  const selectedPtv = App.ptv;
+  const targetSheetName = `${selectedPtv}птв`;
+
+  // Fetch template file
+  const response = await fetch('Суточный_рапорт.xlsx');
+  if (!response.ok) throw new Error('Не удалось загрузить шаблон Суточный_рапорт.xlsx');
+  const fileBlob = await response.blob();
+
+  const wb = await XlsxPopulate.fromDataAsync(fileBlob);
+
+  // Keep selected sheet active & visible, hide other PTV sheets to preserve 100% valid OpenXML references for Google Sheets
+  wb.sheets().forEach(s => {
+    if (s.name() === targetSheetName) {
+      s.hidden(false);
+      s.active(true);
+    } else {
+      s.hidden(true);
+    }
+  });
+
+  const sheet = wb.sheet(targetSheetName);
+  if (!sheet) throw new Error(`Лист ${targetSheetName} не найден в шаблоне`);
+
+  // Date cell O1
+  sheet.cell('O1').value('Мерзім: ' + formattedDate);
+
+  // Fetch measurements for the selected date
+  const dayMeas = await getMeasurementsByDay(selectedDate);
+  const measMap = new Map();
+  (dayMeas || []).forEach(m => {
+    if (m.well_id) measMap.set(String(m.well_id), m);
+    const num = String(m.well_id).includes('-') ? String(m.well_id).split('-')[1] : String(m.well_id || '');
+    if (num) measMap.set(String(num), m);
+  });
+
+  // First find P/Z header row
+  let measHeaderRow = null;
+  for (let i = 30; i <= 70; i++) {
+    const cVal = sheet.cell('C' + i).value();
+    const eVal = sheet.cell('E' + i).value();
+    if ((cVal && String(cVal).includes('Уақыты')) || (eVal && String(eVal).includes('Ұңғылар'))) {
+      measHeaderRow = i;
+      break;
+    }
+  }
+
+  const pzRowsSet = new Set();
+  if (measHeaderRow) {
+    for (let i = measHeaderRow; i < measHeaderRow + 16; i++) {
+      pzRowsSet.add(i);
+    }
+  }
+
+  // Scan main well table rows dynamically across the entire sheet
+  const wellRows = [];
+  for (let r = 5; r <= 100; r++) {
+    if (pzRowsSet.has(r)) continue;
+    const cVal = sheet.cell('C' + r).value();
+    if (cVal && (String(cVal).includes('БРИГАДА') || String(cVal).includes('ОПЕРАТОР') || String(cVal).includes('РАЦИЯ'))) {
+      continue;
+    }
+    const bVal = sheet.cell('B' + r).value();
+    if (bVal != null) {
+      const bStr = String(bVal).trim();
+      if (bStr && !bStr.includes('Ұңғы') && !bStr.includes('р/с')) {
+        wellRows.push({ row: r, wellNum: bStr });
+      }
+    }
+  }
+
+  // Fill main table: if measurement exists => write all fields (E, F, G, H, K, L, O, P=24, R), else => Q=24
+  wellRows.forEach(({ row, wellNum }) => {
+    const wId = `${selectedPtv}-${wellNum}`;
+    const m = measMap.get(wId) || measMap.get(wellNum);
+    if (m) {
+      sheet.cell('E' + row).value((m.meter_reading != null && !isNaN(m.meter_reading)) ? Number(m.meter_reading) : null);
+      sheet.cell('F' + row).value((m.flow_rate_q != null && !isNaN(m.flow_rate_q)) ? Number(m.flow_rate_q) : null);
+      sheet.cell('G' + row).value((m.p_buf != null && !isNaN(m.p_buf)) ? Number(m.p_buf) : null);
+      sheet.cell('H' + row).value((m.p_zat != null && !isNaN(m.p_zat)) ? Number(m.p_zat) : null);
+      sheet.cell('K' + row).value((m.strokes_per_minute != null && !isNaN(m.strokes_per_minute)) ? Number(m.strokes_per_minute) : null);
+      sheet.cell('L' + row).value((m.temperature != null && !isNaN(m.temperature)) ? Number(m.temperature) : null);
+      sheet.cell('O' + row).value(m.time ? String(m.time).slice(0, 5) : null);
+      sheet.cell('P' + row).value(24);
+      sheet.cell('Q' + row).value(null);
+      sheet.cell('R' + row).value((m.notes && String(m.notes).trim()) ? String(m.notes).trim() : null);
+    } else {
+      sheet.cell('E' + row).value(null);
+      sheet.cell('F' + row).value(null);
+      sheet.cell('G' + row).value(null);
+      sheet.cell('H' + row).value(null);
+      sheet.cell('K' + row).value(null);
+      sheet.cell('L' + row).value(null);
+      sheet.cell('O' + row).value(null);
+      sheet.cell('P' + row).value(null);
+      sheet.cell('Q' + row).value(24);
+    }
+  });
+
+
+
+  const measDataRows = [];
+  if (measHeaderRow) {
+    let mr = measHeaderRow + 1;
+    while (mr < measHeaderRow + 20) {
+      const cVal = sheet.cell('C' + mr).value();
+      if (cVal && String(cVal).includes('БРИГАДА')) break;
+      const aVal = sheet.cell('A' + mr).value();
+      if (aVal != null && !isNaN(aVal)) {
+        measDataRows.push(mr);
+      }
+      mr++;
+    }
+  }
+
+  // Fetch P/Z records for selected PTV & Date
+  const allPz = await getAllPzRecords();
+  const pzList = (allPz || []).filter(pz => {
+    const ptvVal = getPtvForWellNumber ? getPtvForWellNumber(pz.well_number, pz.ptv) : (pz.ptv || selectedPtv);
+    if (Number(ptvVal) !== Number(selectedPtv)) return false;
+
+    if (pz.time_1 && pz.time_1.startsWith(selectedDate)) return true;
+    if (pz.timestamp) {
+      const pzDate = new Date(pz.timestamp).toISOString().slice(0, 10);
+      if (pzDate === selectedDate) return true;
+    }
+    return false;
+  });
+
+  const wellRowMap = new Map(wellRows.map(w => [w.wellNum, w.row]));
+
+  // Ensure xf 208 exists in cellXfs for bold centered C cell without right border
+  if (wb._styleSheet && wb._styleSheet._node) {
+    const cellXfsNode = wb._styleSheet._node.children.find(c => c.name === 'cellXfs');
+    if (cellXfsNode && cellXfsNode.children && cellXfsNode.children.length === 208) {
+      cellXfsNode.children.push({
+        name: 'xf',
+        attributes: {
+          numFmtId: '0',
+          fontId: '6',
+          fillId: '0',
+          borderId: '13',
+          xfId: '0',
+          applyFont: '1',
+          applyFill: '1',
+          applyBorder: '1',
+          applyAlignment: '1',
+          applyProtection: '1'
+        },
+        children: [{
+          name: 'alignment',
+          attributes: { horizontal: 'center', vertical: 'center', wrapText: '1' }
+        }]
+      });
+      cellXfsNode.attributes.count = String(cellXfsNode.children.length);
+    }
+  }
+
+  pzList.forEach((pz, idx) => {
+    if (idx >= measDataRows.length) return;
+    const mr = measDataRows[idx];
+
+    // 1. Ұңғы № (formatted as #1910 with Bold, Center, Middle via template xf 185)
+    const wNumStr = String(pz.well_number || '').trim();
+    const formattedWellNum = wNumStr ? (wNumStr.startsWith('#') ? wNumStr : `#${wNumStr}`) : '';
+    const cellB = sheet.cell('B' + mr);
+    cellB.value(formattedWellNum);
+    cellB._styleId = 185;
+
+    // 2. Уақыты (C..E merged: Bold, Center, Middle, no right border line -> xf 208)
+    const t1 = pz.time_1 ? formatTimeHM(pz.time_1) : '';
+    const t2 = pz.time_2 ? formatTimeHM(pz.time_2) : '';
+    const timeStr = (t1 && t2) ? `${t1} - ${t2}` : (t1 || t2 || '');
+    const cellC = sheet.cell('C' + mr);
+    cellC.value(timeStr);
+    cellC._styleId = 208;
+
+    // 3. Есептегіш көрсеткіштері (G..P merged: Bold, Center, Middle, no left border line -> xf 181)
+    const v1 = pz.val_1 != null ? pz.val_1 : '';
+    const v2 = pz.val_2 != null ? pz.val_2 : '';
+    const meterStr = (v1 !== '' && v2 !== '') ? `${v1} - ${v2}` : (v1 !== '' ? `${v1}` : '');
+    const cellG = sheet.cell('G' + mr);
+    cellG.value(meterStr);
+    cellG._styleId = 181;
+
+    // 4. Өлшем (Q m3: Bold, Center, Middle -> xf 185)
+    let qVal = '';
+    if (pz.val_1 != null && pz.time_1 && pz.val_2 != null && pz.time_2) {
+      const res = calculateVolume(pz.val_1, pz.time_1, pz.val_2, pz.time_2);
+      if (res && !res.isError) {
+        qVal = res.debit;
+      }
+    }
+    if (!qVal && pz.val_2 != null && pz.val_1 != null) {
+      qVal = pz.val_2 - pz.val_1;
+    }
+    const cellQ = sheet.cell('Q' + mr);
+    cellQ.value(qVal);
+    cellQ._styleId = 185;
+
+    // 5. Cчёт. түрі (formula =I# referencing matching well row in main table: Bold, Center, Middle -> xf 185)
+    const wRow = wellRowMap.get(wNumStr.replace(/^#/, ''));
+    if (wRow) {
+      const cellR = sheet.cell('R' + mr);
+      cellR.formula(`I${wRow}`);
+      cellR._styleId = 185;
+    }
+  });
+
+  // Signatures into Column D (no bold/center override)
+  let masterRow = null;
+  let operatorRow = null;
+  for (let i = 40; i <= 75; i++) {
+    const cVal = String(sheet.cell('C' + i).value() || '');
+    if (cVal.includes('БРИГАДА ШЕБЕРІ')) masterRow = i;
+    if (cVal.includes('ОПЕРАТОР')) operatorRow = i;
+  }
+
+  if (masterRow) sheet.cell('D' + masterRow).value(masterFio);
+  if (operatorRow) sheet.cell('D' + operatorRow).value(operatorFio);
+
+  // Clean empty <fill/> elements created by xlsx-populate styling to ensure 100% valid OpenXML for Google Sheets and Excel
+  if (wb._styleSheet && wb._styleSheet._node) {
+    const fillsNode = wb._styleSheet._node.children.find(c => c.name === 'fills');
+    if (fillsNode && fillsNode.children) {
+      fillsNode.children = fillsNode.children.filter(c => c.children && c.children.length > 0);
+    }
+  }
+
+  // Download XLSX
+  const outBlob = await wb.outputAsync();
+  const fileName = `Суточный_рапорт_ПТВ${selectedPtv}_${formattedDate}.xlsx`;
+  download(outBlob, fileName, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  toast('📥 Суточный рапорт XLSX скачан', 'success');
 }

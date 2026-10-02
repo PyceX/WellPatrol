@@ -211,6 +211,14 @@ async function seedDefaultWellsIfEmpty(db) {
 }
 
 /* ── CRUD скважин ────────────────────────────────────────── */
+async function getAllWells() {
+  const db = await openDB();
+  return new Promise(resolve => {
+    const r = db.transaction('wells', 'readonly').objectStore('wells').getAll();
+    r.onsuccess = () => resolve((r.result || []).sort((a, b) => a.well_number.localeCompare(b.well_number, undefined, { numeric: true })));
+  });
+}
+
 async function getWellsByPtv(ptv) {
   const db = await openDB();
   return new Promise(resolve => {
@@ -305,6 +313,17 @@ async function getMeasurementsByDay(dateStr) {
   return new Promise(resolve => {
     const r = db.transaction('measurements', 'readonly').objectStore('measurements').index('date').getAll(dateStr);
     r.onsuccess = () => resolve(r.result);
+  });
+}
+
+async function deleteMeasurement(id) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('measurements', 'readwrite');
+    const store = tx.objectStore('measurements');
+    const req = store.delete(id);
+    req.onsuccess = () => resolve(true);
+    req.onerror = () => reject(req.error);
   });
 }
 

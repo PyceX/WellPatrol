@@ -101,13 +101,21 @@
           <label for="report-date">Дата:</label>
           <input type="date" id="report-date">
         </div>
+        <div class="report-toolbar-actions" style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-secondary btn-header-action" id="btn-open-bulk-edit" style="height:32px; padding:0 8px; font-size:0.78rem; border-radius:var(--r-sm);" title="Массовое добавление / редактирование / удаление замеров">
+            <span>📝</span> <span class="btn-text">Массовый ввод</span>
+          </button>
+          <button type="button" class="btn btn-secondary btn-header-action" id="btn-open-excel-export" style="height:32px; padding:0 8px; font-size:0.78rem; border-radius:var(--r-sm);" title="Экспорт суточного рапорта в XLSX (для печати)">
+            <span>📊</span> <span class="btn-text">Рапорт XLSX</span>
+          </button>
+        </div>
       </div>
       <div class="table-scroll-wrapper">
         <table class="report-table" id="report-table">
           <thead>
             <tr>
               <th>Скв</th><th>Показания</th><th>Q</th>
-              <th>P б</th><th>P з</th><th>t°</th><th>Об</th>
+              <th>P б</th><th>P з</th><th>Об</th><th>t°</th>
               <th>⏰</th><th>📝</th>
             </tr>
           </thead>
@@ -215,12 +223,12 @@
         </div>
         <div class="form-row two-cols">
           <div class="form-group">
-            <label>t°C</label>
-            <input type="number" id="input-temp" step="1" inputmode="numeric" placeholder="0">
-          </div>
-          <div class="form-group">
             <label>Об/Чк</label>
             <input type="number" id="input-strokes" step="1" inputmode="numeric" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label>t°C</label>
+            <input type="number" id="input-temp" step="1" inputmode="numeric" placeholder="0">
           </div>
         </div>
         <div class="form-group">
@@ -301,7 +309,10 @@
       <form id="form-pz-edit" novalidate>
         <input type="hidden" id="pz-edit-id">
         <div class="form-group">
-          <label>Номер скважины</label>
+          <div class="row-between">
+            <label>Номер скважины</label>
+            <span id="pz-edit-ptv-badge" class="well-db-badge empty">—</span>
+          </div>
           <input type="text" id="pz-edit-well-number" required placeholder="например, 1170">
         </div>
         <div class="highlight-box">
@@ -356,7 +367,10 @@
       <form id="form-pz-clone" novalidate>
         <input type="hidden" id="pz-clone-source-id">
         <div class="form-group">
-          <label>Номер новой скважины</label>
+          <div class="row-between">
+            <label>Номер новой скважины</label>
+            <span id="pz-clone-ptv-badge" class="well-db-badge empty">—</span>
+          </div>
           <input type="text" id="pz-clone-well-number" required>
         </div>
         <div class="form-group">
@@ -470,9 +484,10 @@
       <div class="scan-step-2 hidden" id="scan-step-2">
         <div class="scan-summary-bar">
           <div class="scan-date-wrap">
-            <label for="scan-input-date">📅 Дата:</label>
-            <input type="date" id="scan-input-date" class="scan-date-input">
+            <label for="scan-input-date" style="font-weight:700;">📅 Дата рапорта <span style="color:var(--c-danger);">*</span>:</label>
+            <input type="date" id="scan-input-date" class="scan-date-input" required>
           </div>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-scan-add-row" style="height:28px; padding:0 8px; font-size:0.75rem;" title="Добавить строку вручную">➕ Строка</button>
           <span id="scan-count-text" class="scan-count-tag">Найдено: <b>0</b> замеров</span>
         </div>
         <div class="scan-table-wrapper">
@@ -481,13 +496,15 @@
               <tr>
                 <th><input type="checkbox" id="scan-check-all" checked></th>
                 <th>СКВ</th>
+                <th>Статус БД</th>
                 <th>Показания</th>
                 <th>Q</th>
                 <th>P б</th>
                 <th>P з</th>
-                <th>t°</th>
                 <th>Об/м</th>
+                <th>t°</th>
                 <th>Время</th>
+                <th>🗑️</th>
               </tr>
             </thead>
             <tbody id="scan-table-body"></tbody>
@@ -501,10 +518,106 @@
     </div>
   </div>
 
+  <!-- МОДАЛ: МАССОВОЕ ДОБАВЛЕНИЕ / РЕДАКТИРОВАНИЕ / УДАЛЕНИЕ ЗА ДАТУ -->
+  <div id="modal-bulk-edit" class="modal hidden">
+    <div class="modal-backdrop" id="bulk-edit-backdrop"></div>
+    <div class="modal-content scan-modal-content">
+      <div class="modal-header">
+        <div>
+          <h2>📝 Массовый ввод & редактирование</h2>
+          <span class="sub-title">Ручное добавление, изменение и удаление данных за выбранную дату</span>
+        </div>
+        <button class="modal-close" id="btn-close-bulk-edit">&times;</button>
+      </div>
+
+      <div class="bulk-toolbar" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; margin-bottom:10px; background:var(--c-surface-2); padding:8px; border-radius:var(--r-sm); border:1px solid var(--c-border);">
+        <div class="scan-date-wrap">
+          <label for="bulk-input-date" style="font-weight:700;">📅 Дата рапорта <span style="color:var(--c-danger);">*</span>:</label>
+          <input type="date" id="bulk-input-date" class="scan-date-input" required>
+        </div>
+        <div class="bulk-actions-group" style="display:flex; flex-wrap:wrap; gap:6px;">
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-bulk-load-date" style="height:30px; font-size:0.75rem;" title="Загрузить из БД замеры за выбранную дату">
+            🔄 Загрузить из БД
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-bulk-fill-ptv" style="height:30px; font-size:0.75rem;" title="Добавить скважины текущего ПТВ">
+            📋 Заполнить ПТВ
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-bulk-add-row" style="height:30px; font-size:0.75rem;" title="Добавить пустую строку">
+            ➕ Строка
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-bulk-delete-selected" style="height:30px; font-size:0.75rem; color:var(--c-danger);" title="Удалить отмеченные галочкой">
+            🗑️ Удалить отмеченные
+          </button>
+        </div>
+      </div>
+
+      <div class="scan-summary-bar" style="margin-bottom:6px;">
+        <span id="bulk-count-text" class="scan-count-tag">Записей в таблице: <b>0</b></span>
+        <span style="font-size:0.72rem; color:var(--c-text-muted);">Проверка скважин в БД выполняется в реальном времени</span>
+      </div>
+
+      <div class="scan-table-wrapper">
+        <table class="scan-preview-table bulk-preview-table">
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="bulk-check-all" checked></th>
+              <th>СКВ</th>
+              <th>Статус БД</th>
+              <th>Показания</th>
+              <th>Q</th>
+              <th>P б</th>
+              <th>P з</th>
+              <th>Об/м</th>
+              <th>t°</th>
+              <th>Время</th>
+              <th>Прим.</th>
+              <th>🗑️</th>
+            </tr>
+          </thead>
+          <tbody id="bulk-table-body"></tbody>
+        </table>
+      </div>
+
+      <div class="modal-footer" style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" id="btn-cancel-bulk-edit">Отмена</button>
+        <button type="button" class="btn btn-primary" id="btn-apply-bulk-edit">✓ Сохранить изменения в БД</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- МОДАЛ: ЭКСПОРТ СУТОЧНОГО РАПОРТА (XLSX) -->
+  <div id="modal-excel-export" class="modal hidden">
+    <div class="modal-backdrop" id="excel-export-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h2>📊 Экспорт суточного рапорта</h2>
+          <span class="sub-title" id="excel-export-ptv-date-label">ПТВ-11 | Дата: 30.09.2026</span>
+        </div>
+        <button class="modal-close" id="btn-close-excel-export">&times;</button>
+      </div>
+      <form id="form-excel-export" novalidate>
+        <div class="form-group">
+          <label for="export-master-fio">Ф.И.О Мастера <span style="color:var(--c-danger);">*</span></label>
+          <input type="text" id="export-master-fio" required placeholder="например, Иванов И.И.">
+        </div>
+        <div class="form-group">
+          <label for="export-operator-fio">Ф.И.О Оператора <span style="color:var(--c-danger);">*</span></label>
+          <input type="text" id="export-operator-fio" required placeholder="например, Петров П.П.">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="btn-cancel-excel-export">Отмена</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-excel-export">📥 Скачать XLSX</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- TOAST -->
   <div id="toast" class="toast hidden"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-populate@1.21.0/browser/xlsx-populate.min.js"></script>
   <script src="db.js"></script>
   <script src="app.js"></script>
   <script>

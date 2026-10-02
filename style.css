@@ -402,7 +402,7 @@ body {
 }
 
 .report-table {
-  width: 100%; border-collapse: collapse;
+  width: 100%; border-collapse: separate; border-spacing: 0;
   font-family: var(--font-mono); font-size: 0.78rem;
   text-align: center; white-space: nowrap;
 }
@@ -410,13 +410,25 @@ body {
 .report-table th {
   background-color: var(--c-surface-2); color: var(--c-primary);
   font-family: var(--font-sans); font-weight: 700; font-size: 0.75rem;
-  text-transform: uppercase; padding: 8px 8px;
+  text-transform: uppercase; padding: 7px 7px;
   border-bottom: 1.5px solid var(--c-pixel-border);
   position: sticky; top: 0; z-index: 2;
 }
 
 .report-table td {
-  padding: 8px 8px; border-bottom: 1px solid var(--c-border); color: var(--c-text);
+  padding: 7px 7px; border-bottom: 1px solid var(--c-border); color: var(--c-text);
+}
+
+.report-table th:first-child {
+  position: sticky; left: 0; top: 0; z-index: 4;
+  background-color: var(--c-surface-2);
+  border-right: 1.5px solid var(--c-pixel-border);
+}
+
+.report-table td:first-child {
+  position: sticky; left: 0; z-index: 3;
+  background-color: var(--c-surface);
+  border-right: 1.5px solid var(--c-pixel-border);
 }
 
 .report-table tr.ruler-active {
@@ -426,6 +438,10 @@ body {
 
 .report-table tr.ruler-active td {
   color: var(--c-ruler-text) !important; border-bottom: 1.5px solid var(--c-pixel-border) !important;
+}
+
+.report-table tr.ruler-active td:first-child {
+  background-color: var(--c-ruler) !important;
 }
 
 /* ── 7. P/Z REMEASURE CARDS ──────────────────────────────── */
@@ -1197,3 +1213,60 @@ input[type="file"] {
   .form-row { margin-bottom: 4px; }
   .highlight-box, .highlight-box-accent { padding: 6px; margin-bottom: 6px; }
 }
+
+/* ── 15. REAL-TIME DB BADGES & BULK EDIT STYLES ────────────────── */
+.well-db-badge {
+  display: inline-block;
+  padding: 1px 4px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: var(--r-sm);
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.well-db-badge.exist {
+  background-color: var(--c-success-bg);
+  color: var(--c-success);
+  border: 1px solid var(--c-success);
+}
+.well-db-badge.not-exist {
+  background-color: var(--c-danger-bg);
+  color: var(--c-danger);
+  border: 1px solid var(--c-danger);
+}
+.well-db-badge.empty {
+  background-color: var(--c-surface-2);
+  color: var(--c-text-muted);
+  border: 1px solid var(--c-border);
+}
+
+.btn-del-row {
+  background: transparent;
+  border: none;
+  color: var(--c-danger);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--r-sm);
+  transition: background 0.15s;
+}
+.btn-del-row:hover {
+  background-color: var(--c-danger-bg);
+}
+
+.btn-danger-soft {
+  background-color: var(--c-danger-bg) !important;
+  color: var(--c-danger) !important;
+  border: 1px solid var(--c-danger) !important;
+}
+.btn-danger-soft:hover {
+  background-color: var(--c-danger) !important;
+  color: #ffffff !important;
+}
+
+.input-error {
+  border-color: var(--c-danger) !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.3) !important;
+}
+

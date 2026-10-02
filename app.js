@@ -1777,26 +1777,15 @@ function initBulkEdit() {
   const btnClose = document.getElementById('btn-close-bulk-edit');
   const btnCancel = document.getElementById('btn-cancel-bulk-edit');
   const backdrop = document.getElementById('bulk-edit-backdrop');
-  const dateInput = document.getElementById('bulk-input-date');
-  const btnLoad = document.getElementById('btn-bulk-load-date');
-  const btnFillPtv = document.getElementById('btn-bulk-fill-ptv');
-  const btnAddRow = document.getElementById('btn-bulk-add-row');
-  const btnDeleteSelected = document.getElementById('btn-bulk-delete-selected');
   const btnApply = document.getElementById('btn-apply-bulk-edit');
-  const checkAll = document.getElementById('bulk-check-all');
   const tbody = document.getElementById('bulk-table-body');
 
   if (!btnOpen || !modal) return;
 
-  let deletedDbIds = [];
-
   const close = () => modal.classList.add('hidden');
 
   btnOpen.addEventListener('click', async () => {
-    deletedDbIds = [];
     const activeReportDate = document.getElementById('report-date')?.value || today();
-    dateInput.value = activeReportDate;
-    dateInput.classList.remove('input-error');
     modal.classList.remove('hidden');
     await loadBulkDataForDate(activeReportDate);
   });
@@ -1805,145 +1794,69 @@ function initBulkEdit() {
   btnCancel.addEventListener('click', close);
   backdrop.addEventListener('click', close);
 
-  dateInput.addEventListener('change', async () => {
-    const val = dateInput.value.trim();
-    if (val) {
-      dateInput.classList.remove('input-error');
-      await loadBulkDataForDate(val);
-    }
-  });
-
-  btnLoad.addEventListener('click', async () => {
-    const val = dateInput.value.trim();
-    if (!val) {
-      toast('Укажите дату рапорта!', 'error');
-      dateInput.classList.add('input-error');
-      return;
-    }
-    await loadBulkDataForDate(val);
-  });
-
-  btnFillPtv.addEventListener('click', () => {
-    const ptvWells = App.wells || [];
-    if (ptvWells.length === 0) {
-      toast(`Нет скважин для ПТВ-${App.ptv}`, 'warning');
-      return;
-    }
-    const sortedWells = [...ptvWells].sort((a, b) => 
-      a.well_number.localeCompare(b.well_number, undefined, { numeric: true })
-    );
-    tbody.innerHTML = '';
-    const frag = document.createDocumentFragment();
-    sortedWells.forEach(w => {
-      const tr = createBulkTableRow({ well_number: w.well_number, time: now() });
-      frag.appendChild(tr);
-    });
-    tbody.appendChild(frag);
-    updateBulkCount();
-  });
-
-  btnAddRow.addEventListener('click', () => {
-    const tr = createBulkTableRow({ time: now() });
-    tbody.appendChild(tr);
-    updateBulkCount();
-    const firstIn = tr.querySelector('.bulk-in-well');
-    if (firstIn) firstIn.focus();
-  });
-
-  btnDeleteSelected.addEventListener('click', () => {
-    const rows = tbody.querySelectorAll('tr');
-    let count = 0;
-    rows.forEach(tr => {
-      const chk = tr.querySelector('.bulk-row-check');
-      if (chk && chk.checked) {
-        const dbId = tr.dataset.dbId;
-        if (dbId) deletedDbIds.push(Number(dbId));
-        tr.remove();
-        count++;
-      }
-    });
-    updateBulkCount();
-    if (count > 0) toast(`Удалено ${count} строк из таблицы`, 'info');
-  });
-
-  checkAll.addEventListener('change', () => {
-    const isChecked = checkAll.checked;
-    tbody.querySelectorAll('.bulk-row-check').forEach(c => c.checked = isChecked);
-  });
-
   btnApply.addEventListener('click', async () => {
-    const importDate = dateInput.value.trim();
-    if (!importDate) {
-      toast('⚠️ Пожалуйста, укажите дату рапорта!', 'error');
-      dateInput.classList.add('input-error');
-      dateInput.focus();
-      return;
-    }
-    dateInput.classList.remove('input-error');
-
-    // 1. Удаляем замеры, удалённые пользователем
-    for (const id of deletedDbIds) {
-      try { await deleteMeasurement(id); } catch (e) { console.error(e); }
-    }
-
-    // 2. Сохраняем/обновляем замеры из таблицы СТРОГО ПО ВЫБРАННОМУ ПТВ
+    const importDate = document.getElementById('report-date')?.value || today();
     const rows = tbody.querySelectorAll('tr');
     let savedCount = 0;
-    let skippedCount = 0;
+    let clearedCount = 0;
 
     for (const tr of rows) {
-      const chk = tr.querySelector('.bulk-row-check');
-      if (!chk || !chk.checked) continue;
+      const wellId = tr.dataset.wellId;
+      if (!wellId) continue;
 
-      const wellNumber = tr.querySelector('.bulk-in-well')?.value?.trim();
-      if (!wellNumber) continue;
-
-      // ПРОВЕРКА СТРОГО ПО ВЫБРАННОМУ ПТВ (App.wells)
-      const matchedWell = findWellInDb(wellNumber);
-      if (!matchedWell) {
-        // Если скважины нет в выбранном ПТВ — НЕ сохранять в БД!
-        skippedCount++;
-        continue;
-      }
-
-      const wellId = matchedWell.id;
-
-      const meterVal = tr.querySelector('.bulk-in-meter')?.value?.trim() || null;
       const numOrNull = el => {
         const v = parseFloat(el?.value);
         return isNaN(v) ? null : v;
       };
 
-      const notesIn = tr.querySelector('.bulk-in-notes');
-      const notesVal = notesIn ? notesIn.value.trim() : (tr.dataset.notes || '');
+      const meterVal = tr.querySelector('.bulk-in-meter')?.value?.trim() || null;
+      const flowQ = numOrNull(tr.querySelector('.bulk-in-q'));
+      const pBuf = numOrNull(tr.querySelector('.bulk-in-pbuf'));
+      const pZat = numOrNull(tr.querySelector('.bulk-in-pzat'));
+      const strokes = numOrNull(tr.querySelector('.bulk-in-strokes'));
+      const temp = numOrNull(tr.querySelector('.bulk-in-temp'));
+      const timeVal = tr.querySelector('.bulk-in-time')?.value?.trim() || '';
+      const notesVal = tr.querySelector('.bulk-in-notes')?.value?.trim() || '';
 
-      const measData = {
-        well_id: wellId,
-        date: importDate,
-        time: tr.querySelector('.bulk-in-time')?.value?.trim() || now(),
-        meter_reading: meterVal,
-        flow_rate_q: numOrNull(tr.querySelector('.bulk-in-q')),
-        p_buf: numOrNull(tr.querySelector('.bulk-in-pbuf')),
-        p_zat: numOrNull(tr.querySelector('.bulk-in-pzat')),
-        strokes_per_minute: numOrNull(tr.querySelector('.bulk-in-strokes')),
-        temperature: numOrNull(tr.querySelector('.bulk-in-temp')),
-        notes: notesVal,
-        timestamp: Date.now()
-      };
+      const hasData = meterVal !== null || flowQ !== null || pBuf !== null || pZat !== null || strokes !== null || temp !== null || timeVal !== '' || notesVal !== '';
 
-      if (tr.dataset.dbId) {
-        measData.id = Number(tr.dataset.dbId);
+      if (hasData) {
+        const measData = {
+          well_id: wellId,
+          date: importDate,
+          time: timeVal || now(),
+          meter_reading: meterVal,
+          flow_rate_q: flowQ,
+          p_buf: pBuf,
+          p_zat: pZat,
+          strokes_per_minute: strokes,
+          temperature: temp,
+          notes: notesVal,
+          timestamp: Date.now()
+        };
+
+        if (tr.dataset.dbId) {
+          measData.id = Number(tr.dataset.dbId);
+        }
+
+        await saveMeasurement(measData);
+        savedCount++;
+      } else if (tr.dataset.dbId) {
+        // Поля очищены кнопкой "✕" — удаляем замер из БД
+        try {
+          await deleteMeasurement(Number(tr.dataset.dbId));
+          clearedCount++;
+        } catch (e) {
+          console.error(e);
+        }
       }
-
-      await saveMeasurement(measData);
-      savedCount++;
     }
 
-    if (savedCount > 0) {
-      const skipMsg = skippedCount > 0 ? ` (пропущено ${skippedCount} скв. не из ПТВ-${App.ptv})` : '';
-      toast(`✓ Успешно сохранено ${savedCount} замеров для ПТВ-${App.ptv}${skipMsg}`, 'success');
+    if (savedCount > 0 || clearedCount > 0) {
+      const clearMsg = clearedCount > 0 ? ` (очищено замеров: ${clearedCount})` : '';
+      toast(`✓ Сохранено ${savedCount} замеров для ПТВ-${App.ptv}${clearMsg}`, 'success');
     } else {
-      toast(`⚠️ Ни один замер не сохранен: скважины отсутствуют в ПТВ-${App.ptv}`, 'error');
+      toast(`ℹ️ Нет данных для сохранения`, 'info');
     }
 
     close();
@@ -1956,86 +1869,56 @@ async function loadBulkDataForDate(dateStr) {
   if (!tbody) return;
 
   const allMeasurements = await getMeasurementsByDay(dateStr);
-  const ptvWells = App.wells || [];
-  const ptvWellIds = new Set(ptvWells.map(w => w.id));
-
-  // Фильтруем замеры СТРОГО для выбранного ПТВ
-  const measurements = (allMeasurements || []).filter(m => ptvWellIds.has(m.well_id));
-
-  // Сортируем замеры по номеру скважины в точности как в "Рапорт"
-  measurements.sort((a, b) => {
-    const wellA = ptvWells.find(w => w.id === a.well_id);
-    const wellB = ptvWells.find(w => w.id === b.well_id);
-    const numA = wellA ? wellA.well_number : String(a.well_id).replace(/^[0-9]+-/, '');
-    const numB = wellB ? wellB.well_number : String(b.well_id).replace(/^[0-9]+-/, '');
-    return numA.localeCompare(numB, undefined, { numeric: true });
-  });
-
-  const sortedPtvWells = [...ptvWells].sort((a, b) => 
+  const ptvWells = [...(App.wells || [])].sort((a, b) =>
     a.well_number.localeCompare(b.well_number, undefined, { numeric: true })
   );
+  const measMap = new Map((allMeasurements || []).map(m => [m.well_id, m]));
 
   tbody.innerHTML = '';
+  const frag = document.createDocumentFragment();
 
-  if (measurements.length > 0) {
-    const frag = document.createDocumentFragment();
-    measurements.forEach(m => {
-      const wellObj = ptvWells.find(w => w.id === m.well_id);
-      const wellNumber = wellObj ? wellObj.well_number : m.well_id.replace(/^[0-9]+-/, '');
+  ptvWells.forEach(w => {
+    const m = measMap.get(w.id);
+    const tr = createBulkTableRow({
+      well_id: w.id,
+      well_number: w.well_number,
+      id: m?.id,
+      meter_reading: m?.meter_reading,
+      flow_rate_q: m?.flow_rate_q,
+      p_buf: m?.p_buf,
+      p_zat: m?.p_zat,
+      strokes_per_minute: m?.strokes_per_minute,
+      temperature: m?.temperature,
+      time: m?.time,
+      notes: m?.notes
+    });
+    frag.appendChild(tr);
+  });
 
-      const tr = createBulkTableRow({
-        id: m.id,
-        well_number: wellNumber,
-        meter_reading: m.meter_reading,
-        flow_rate_q: m.flow_rate_q,
-        p_buf: m.p_buf,
-        p_zat: m.p_zat,
-        strokes_per_minute: m.strokes_per_minute,
-        temperature: m.temperature,
-        time: m.time,
-        notes: m.notes
-      });
-      frag.appendChild(tr);
-    });
-    tbody.appendChild(frag);
-  } else {
-    const frag = document.createDocumentFragment();
-    sortedPtvWells.forEach(w => {
-      const tr = createBulkTableRow({ well_number: w.well_number, time: now() });
-      frag.appendChild(tr);
-    });
-    tbody.appendChild(frag);
-  }
+  tbody.appendChild(frag);
   updateBulkCount();
 }
 
 function createBulkTableRow(data = {}) {
   const tr = document.createElement('tr');
   if (data.id) tr.dataset.dbId = data.id;
-  if (data.notes) tr.dataset.notes = data.notes;
+  if (data.well_id) tr.dataset.wellId = data.well_id;
 
   tr.innerHTML = `
-    <td><input type="checkbox" class="bulk-row-check" checked></td>
-    <td><input type="text" class="in-well bulk-in-well" value="${data.well_number || ''}" style="width:55px;"></td>
-    <td class="well-status-cell"></td>
-    <td><input type="number" step="any" class="bulk-in-meter" value="${data.meter_reading ?? ''}" style="width:75px;"></td>
-    <td><input type="number" step="any" class="bulk-in-q" value="${data.flow_rate_q ?? ''}" style="width:45px;"></td>
-    <td><input type="number" step="0.1" class="bulk-in-pbuf" value="${data.p_buf ?? ''}" style="width:45px;"></td>
-    <td><input type="number" step="0.1" class="bulk-in-pzat" value="${data.p_zat ?? ''}" style="width:45px;"></td>
-    <td><input type="number" step="1" class="bulk-in-strokes" value="${data.strokes_per_minute ?? ''}" style="width:45px;"></td>
-    <td><input type="number" step="1" class="bulk-in-temp" value="${data.temperature ?? ''}" style="width:40px;"></td>
-    <td><input type="text" class="bulk-in-time" value="${data.time || now()}" style="width:50px;"></td>
+    <td><b>${data.well_number || ''}</b></td>
+    <td><input type="number" step="any" class="bulk-in-meter" value="${data.meter_reading ?? ''}" style="width:75px;" placeholder="—"></td>
+    <td><input type="number" step="any" class="bulk-in-q" value="${data.flow_rate_q ?? ''}" style="width:45px;" placeholder="—"></td>
+    <td><input type="number" step="0.1" class="bulk-in-pbuf" value="${data.p_buf ?? ''}" style="width:45px;" placeholder="—"></td>
+    <td><input type="number" step="0.1" class="bulk-in-pzat" value="${data.p_zat ?? ''}" style="width:45px;" placeholder="—"></td>
+    <td><input type="number" step="1" class="bulk-in-strokes" value="${data.strokes_per_minute ?? ''}" style="width:45px;" placeholder="—"></td>
+    <td><input type="number" step="1" class="bulk-in-temp" value="${data.temperature ?? ''}" style="width:40px;" placeholder="—"></td>
+    <td><input type="text" class="bulk-in-time" value="${data.time || ''}" style="width:50px;" placeholder="—"></td>
     <td><input type="text" class="bulk-in-notes" value="${data.notes || ''}" placeholder="Прим." style="width:65px;"></td>
-    <td><button type="button" class="btn-del-row" title="Удалить строку">&times;</button></td>
+    <td><button type="button" class="btn-clear-row" title="Очистить поля этой скважины" style="background:none; border:none; color:var(--c-danger); font-size:1.1rem; font-weight:bold; cursor:pointer; padding:2px 6px;">✕</button></td>
   `;
 
-  const wellIn = tr.querySelector('.bulk-in-well');
-  wellIn.addEventListener('input', () => updateWellDbBadge(wellIn));
-  updateWellDbBadge(wellIn);
-
-  tr.querySelector('.btn-del-row').addEventListener('click', () => {
-    tr.remove();
-    updateBulkCount();
+  tr.querySelector('.btn-clear-row').addEventListener('click', () => {
+    tr.querySelectorAll('input').forEach(input => input.value = '');
   });
 
   return tr;
@@ -2045,7 +1928,10 @@ function updateBulkCount() {
   const tbody = document.getElementById('bulk-table-body');
   const count = tbody ? tbody.querySelectorAll('tr').length : 0;
   const tag = document.getElementById('bulk-count-text');
-  if (tag) tag.innerHTML = `Записей в таблице: <b>${count}</b> (ПТВ-${App.ptv})`;
+  const activeReportDate = document.getElementById('report-date')?.value || today();
+  const parts = activeReportDate.split('-');
+  const formattedDate = (parts.length === 3) ? `${parts[2]}.${parts[1]}.${parts[0]}` : activeReportDate;
+  if (tag) tag.innerHTML = `<b>${formattedDate}</b> | Скважин в списке: <b>${count}</b> (ПТВ-${App.ptv})`;
 }
 
 

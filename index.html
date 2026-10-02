@@ -525,44 +525,20 @@
       <div class="modal-header">
         <div>
           <h2>📝 Массовый ввод & редактирование</h2>
-          <span class="sub-title">Ручное добавление, изменение и удаление данных за выбранную дату</span>
+          <span class="sub-title">Быстрое изменение и очистка замеров за выбранную дату</span>
         </div>
         <button class="modal-close" id="btn-close-bulk-edit">&times;</button>
       </div>
 
-      <div class="bulk-toolbar" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; margin-bottom:10px; background:var(--c-surface-2); padding:8px; border-radius:var(--r-sm); border:1px solid var(--c-border);">
-        <div class="scan-date-wrap">
-          <label for="bulk-input-date" style="font-weight:700;">📅 Дата рапорта <span style="color:var(--c-danger);">*</span>:</label>
-          <input type="date" id="bulk-input-date" class="scan-date-input" required>
-        </div>
-        <div class="bulk-actions-group" style="display:flex; flex-wrap:wrap; gap:6px;">
-          <button type="button" class="btn btn-secondary btn-sm" id="btn-bulk-load-date" style="height:30px; font-size:0.75rem;" title="Загрузить из БД замеры за выбранную дату">
-            🔄 Загрузить из БД
-          </button>
-          <button type="button" class="btn btn-secondary btn-sm" id="btn-bulk-fill-ptv" style="height:30px; font-size:0.75rem;" title="Добавить скважины текущего ПТВ">
-            📋 Заполнить ПТВ
-          </button>
-          <button type="button" class="btn btn-secondary btn-sm" id="btn-bulk-add-row" style="height:30px; font-size:0.75rem;" title="Добавить пустую строку">
-            ➕ Строка
-          </button>
-          <button type="button" class="btn btn-secondary btn-sm" id="btn-bulk-delete-selected" style="height:30px; font-size:0.75rem; color:var(--c-danger);" title="Удалить отмеченные галочкой">
-            🗑️ Удалить отмеченные
-          </button>
-        </div>
-      </div>
-
-      <div class="scan-summary-bar" style="margin-bottom:6px;">
-        <span id="bulk-count-text" class="scan-count-tag">Записей в таблице: <b>0</b></span>
-        <span style="font-size:0.72rem; color:var(--c-text-muted);">Проверка скважин в БД выполняется в реальном времени</span>
+      <div class="scan-summary-bar" style="margin-bottom:8px;">
+        <span id="bulk-count-text" class="scan-count-tag">--.--.---- | Скважин в списке: <b>0</b></span>
       </div>
 
       <div class="scan-table-wrapper">
         <table class="scan-preview-table bulk-preview-table">
           <thead>
             <tr>
-              <th><input type="checkbox" id="bulk-check-all" checked></th>
               <th>СКВ</th>
-              <th>Статус БД</th>
               <th>Показания</th>
               <th>Q</th>
               <th>P б</th>
@@ -571,7 +547,7 @@
               <th>t°</th>
               <th>Время</th>
               <th>Прим.</th>
-              <th>🗑️</th>
+              <th>✕</th>
             </tr>
           </thead>
           <tbody id="bulk-table-body"></tbody>

@@ -327,14 +327,6 @@ async function deleteMeasurement(id) {
   });
 }
 
-async function deleteMeasurementByWellAndDate(wellId, dateStr) {
-  const existing = await getMeasurementByDate(wellId, dateStr);
-  if (existing && existing.id) {
-    return deleteMeasurement(existing.id);
-  }
-  return false;
-}
-
 /* ── CRUD Перезамеров (П/З) ────────────────────────────── */
 async function getAllPzRecords() {
   const db = await openDB();

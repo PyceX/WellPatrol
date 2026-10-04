@@ -19,6 +19,9 @@ const App = {
   pzFilter: 'all',
   sortMode: localStorage.getItem('dng_sort_mode') || 'num',
   theme: localStorage.getItem('dng_theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'),
+  operatorName: (localStorage.getItem('wellpatrol_operator_name') || localStorage.getItem('dng_operator_fio') || '').trim(),
+  sheetsUrl: (localStorage.getItem('wellpatrol_sheets_url') || '').trim(),
+  isSyncing: false,
 };
 
 /* ── ТЕМА (День / Ночь) ─────────────────────────────────── */
@@ -145,8 +148,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initSort();
   initPatrolFilters();
   initMeasureForm();
-  initExport();
-  initExportModal();
+  initSettingsModal();
   initExcelReportModal();
   initPz();
   initSearch();
@@ -155,8 +157,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   initBulkEdit();
 
   document.getElementById('report-date').value = today();
-  document.getElementById('export-date').value = today();
   await refresh();
+
+  // Автоматическая тихая синхронизация при запуске
+  if (App.sheetsUrl && navigator.onLine) {
+    syncPull();
+  }
+
+  // Запрос имени оператора при первом открытии, если не заполнено
+  if (!App.operatorName) {
+    document.getElementById('modal-settings')?.classList.remove('hidden');
+  }
+
+  // При восстановлении интернета — тихий пулл и отправка очереди
+  window.addEventListener('online', () => {
+    if (App.sheetsUrl) {
+      syncPull();
+    }
+  });
 });
 
 /* ── ПТВ ─────────────────────────────────────────────────── */
@@ -353,7 +371,8 @@ async function renderPatrol() {
     list.sort((a, b) => a.well_number.localeCompare(b.well_number, undefined, { numeric: true }));
   }
 
-  document.getElementById('patrol-progress').textContent = `${done.size} / ${App.wells.length} измерено`;
+  const doneCount = App.wells.filter(w => done.has(w.id)).length;
+  document.getElementById('patrol-progress').textContent = `${doneCount} / ${App.wells.length} измерено`;
 
   if (!list.length) {
     box.innerHTML = `<div class="empty-state"><p>${q ? 'Скважина не найдена' : 'Нет скважин в этом списке'}</p></div>`;
@@ -365,8 +384,9 @@ async function renderPatrol() {
     const m = mapMeas.get(w.id);
     const prevM = prevMap.get(w.id);
     const ok = Boolean(m);
+    const isLocked = Boolean(ok && m.author && App.operatorName && m.author.toLowerCase() !== App.operatorName.toLowerCase());
     const el = document.createElement('div');
-    el.className = `well-card${ok ? ' done' : ''}`;
+    el.className = `well-card${ok ? ' done' : ''}${isLocked ? ' locked' : ''}`;
 
     const dist = w.dist != null ? `<span class="distance-tag">${w.dist}м</span>` : '';
     
@@ -386,14 +406,22 @@ async function renderPatrol() {
       measInfo = ` · ⏰ ${m.time}`;
     }
 
+    const authorTag = isLocked ? ` · <span class="card-author-tag">🔒 ${m.author}</span>` : '';
+
     el.innerHTML = `
       <div class="well-info">
         <div class="well-title"><span>№ ${w.well_number}</span>${dist}</div>
-        <div class="well-subtext">ПТВ-${w.ptv}${measInfo}</div>
+        <div class="well-subtext">ПТВ-${w.ptv}${measInfo}${authorTag}</div>
       </div>
-      <div class="status-check">${ok ? '✓' : '○'}</div>`;
+      <div class="status-check">${ok ? (isLocked ? '✓ 🔒' : '✓') : '○'}</div>`;
 
-    el.addEventListener('click', () => openMeasure(w));
+    el.addEventListener('click', () => {
+      if (isLocked) {
+        toast(`🔒 Скважина № ${w.well_number} уже замерена (Оператор: ${m.author})`, 'warning');
+        return;
+      }
+      openMeasure(w);
+    });
 
     const dropTag = el.querySelector('.card-q-drop');
     if (dropTag) {
@@ -468,7 +496,12 @@ async function renderReport() {
   highlightRuler();
 }
 
-document.getElementById('report-date')?.addEventListener('change', renderReport);
+document.getElementById('report-date')?.addEventListener('change', async () => {
+  await renderReport();
+  if (App.sheetsUrl && navigator.onLine) {
+    syncPull();
+  }
+});
 
 /* ── Подсветка строки в рапорте ──────────────────────────── */
 function setRuler(i) { App.ruler = i; highlightRuler(); }
@@ -621,6 +654,12 @@ async function openMeasure(well) {
   document.getElementById('input-strokes').placeholder = prevMeas?.strokes_per_minute != null ? prevMeas.strokes_per_minute : '0';
   document.getElementById('input-temp').placeholder    = prevMeas?.temperature != null ? prevMeas.temperature : '0';
   const ex = await getMeasurementByDate(well.id, d);
+  if (ex && ex.author && App.operatorName && ex.author.toLowerCase() !== App.operatorName.toLowerCase()) {
+    toast(`🔒 Скважина № ${well.well_number} уже замерена (Оператор: ${ex.author})`, 'warning');
+    return;
+  }
+
+
   const fields = {
     'input-time':    ex?.time ?? now(),
     'input-meter':   ex?.meter_reading ?? '',
@@ -731,7 +770,7 @@ function initMeasureForm() {
     const mMeter = num('input-meter');
     const mNotes = document.getElementById('input-notes').value.trim();
 
-    await saveMeasurement({
+    const measData = {
       well_id: wellId,
       date: mDate,
       time: mTime,
@@ -742,8 +781,19 @@ function initMeasureForm() {
       strokes_per_minute: num('input-strokes'),
       temperature: num('input-temp'),
       notes: mNotes,
+      author: App.operatorName || 'Оператор',
       timestamp: Date.now(),
-    });
+      updated_at: new Date().toISOString(),
+      synced: true,
+    };
+
+    await saveMeasurement(measData);
+
+    const wellObj = App.wells.find(w => w.id === wellId) || findWellByNumber(wellId);
+    const wellNum = wellObj ? wellObj.well_number : wellId.replace(/^[0-9]+-/, '');
+    const targetPtv = wellObj ? wellObj.ptv : App.ptv;
+
+    syncPushMeasurement(targetPtv, mDate, wellNum, measData, false);
 
     const isPzChecked = document.getElementById('input-pz-clone')?.checked;
     if (isPzChecked) {
@@ -927,77 +977,342 @@ function initAddWell() {
   });
 }
 
-/* ── Экспорт / Бэкап ────────────────────────────────────── */
-function initExport() {
-  document.getElementById('btn-export-csv').addEventListener('click', async () => {
-    const date = document.getElementById('export-date').value;
-    if (!date) { toast('Выберите дату', 'error'); return; }
+/* ── Настройки и Синхронизация с Google Таблицей ─────────── */
+function initSettingsModal() {
+  const modal = document.getElementById('modal-settings');
+  const openBtn = document.getElementById('btn-open-settings');
+  const closeBtn = document.getElementById('btn-close-settings');
+  const cancelBtn = document.getElementById('btn-cancel-settings');
+  const saveBtn = document.getElementById('btn-save-settings');
+  const testBtn = document.getElementById('btn-test-connection');
+  const backdrop = document.getElementById('settings-backdrop');
+  const nameInput = document.getElementById('setting-operator-name');
+  const urlInput = document.getElementById('setting-sheets-url');
+  const statusMsg = document.getElementById('connection-status-msg');
 
-    const meas = await getMeasurementsByDay(date);
-    const map = new Map(meas.map(m => [m.well_id, m]));
-    let wells = await getWellsByPtv(App.ptv);
+  if (!modal) return;
+  const close = () => modal.classList.add('hidden');
 
-    if (App.sortMode === 'gps' && App.gps) {
-      wells = wells.map(w => ({
-        ...w,
-        dist: (w.lat && w.lon) ? haversine(App.gps.lat, App.gps.lon, w.lat, w.lon) : 9e9
-      })).sort((a, b) => (a.dist ?? 9e9) - (b.dist ?? 9e9));
-    } else {
-      wells.sort((a, b) => a.well_number.localeCompare(b.well_number, undefined, { numeric: true }));
+  const open = () => {
+    if (nameInput) nameInput.value = App.operatorName || '';
+    if (urlInput) urlInput.value = App.sheetsUrl || '';
+    if (statusMsg) {
+      statusMsg.style.display = 'none';
+      statusMsg.textContent = '';
+      statusMsg.className = '';
+    }
+    modal.classList.remove('hidden');
+  };
+
+  openBtn?.addEventListener('click', open);
+  closeBtn?.addEventListener('click', close);
+  cancelBtn?.addEventListener('click', close);
+  backdrop?.addEventListener('click', close);
+
+  testBtn?.addEventListener('click', async () => {
+    const rawUrl = (urlInput?.value || '').trim();
+    if (!rawUrl) {
+      showStatus('⚠️ Введите URL веб-приложения', 'error');
+      return;
+    }
+    if (!rawUrl.startsWith('http')) {
+      showStatus('⚠️ URL должен начинаться с https://', 'error');
+      return;
     }
 
-    let csv = '\uFEFFСкважина;ПТВ;Показания;Q факт;P буф;P зат;Об/Чк;t°C;Время;Дата;Примечание\n';
-    wells.forEach(w => {
-      const m = map.get(w.id) || {};
-      csv += [
-        w.well_number, w.ptv,
-        m.meter_reading ?? '', m.flow_rate_q ?? '',
-        m.p_buf ?? '', m.p_zat ?? '',
-        m.strokes_per_minute ?? '', m.temperature ?? '',
-        m.time ?? '', date,
-        `"${(m.notes || '').replace(/"/g, '""')}"`,
-      ].join(';') + '\n';
-    });
-
-    download(csv, `Рапорт_ПТВ${App.ptv}_${date}.csv`, 'text/csv;charset=utf-8;');
-    toast('📥 CSV загружен', 'success');
+    showStatus('⏳ Проверка связи с Google Таблицей...', 'info');
+    try {
+      const pingUrl = rawUrl + (rawUrl.includes('?') ? '&' : '?') + 'action=ping&_t=' + Date.now();
+      const resp = await fetch(pingUrl, { method: 'GET' });
+      const json = await resp.json();
+      if (json && json.success) {
+        showStatus('✅ Подключение успешно! Таблица доступна', 'success');
+      } else {
+        showStatus('❌ Ответ скрипта: ' + (json?.error || 'неизвестная ошибка'), 'error');
+      }
+    } catch (err) {
+      console.warn('Test connection error:', err);
+      showStatus('❌ Не удалось подключиться: проверьте URL или доступ «Все» (Anyone) при развертывании', 'error');
+    }
   });
 
-  const btnExportBackup = document.getElementById('btn-export-backup');
-  if (btnExportBackup) {
-    btnExportBackup.addEventListener('click', async () => {
-      try {
-        const dump = await exportFullDB();
-        const jsonStr = JSON.stringify(dump, null, 2);
-        const d = today();
-        download(jsonStr, `WellPatrol_Backup_${d}.json`, 'application/json;charset=utf-8;');
-        toast('💾 Бэкап сохранен (.json)', 'success');
-      } catch (err) {
-        console.error('Backup error:', err);
-        toast('Ошибка при создании бэкапа', 'error');
+  saveBtn?.addEventListener('click', async () => {
+    const name = (nameInput?.value || '').trim();
+    const url = (urlInput?.value || '').trim();
+
+    if (!name) {
+      toast('Введите имя / ФИО оператора', 'error');
+      nameInput?.focus();
+      return;
+    }
+
+    App.operatorName = name;
+    App.sheetsUrl = url;
+    localStorage.setItem('wellpatrol_operator_name', name);
+    localStorage.setItem('dng_operator_fio', name);
+    localStorage.setItem('wellpatrol_sheets_url', url);
+
+    toast('✓ Настройки сохранены', 'success');
+    close();
+    await refresh();
+    if (url && navigator.onLine) {
+      syncPull();
+    }
+  });
+
+  function showStatus(text, type) {
+    if (!statusMsg) return;
+    statusMsg.style.display = 'block';
+    statusMsg.textContent = text;
+    statusMsg.className = type === 'success' 
+      ? 'settings-status-success' 
+      : (type === 'error' ? 'settings-status-error' : '');
+    if (type === 'info') {
+      statusMsg.style.backgroundColor = 'var(--c-surface-2)';
+      statusMsg.style.color = 'var(--c-text)';
+      statusMsg.style.border = '1px solid var(--c-border)';
+    }
+  }
+}
+
+/**
+ * Очередь отправки офлайн-замеров
+ */
+function queueOfflinePush(items) {
+  try {
+    const list = Array.isArray(items) ? items : [items];
+    const q = JSON.parse(localStorage.getItem('wellpatrol_sync_queue') || '[]');
+    list.forEach(payload => {
+      const ptvStr = String(payload.ptv);
+      const wellStr = String(payload.wellNum);
+      const idx = q.findIndex(item => 
+        String(item.ptv) === ptvStr && item.date === payload.date && String(item.wellNum) === wellStr
+      );
+      if (idx !== -1) {
+        q[idx] = payload;
+      } else {
+        q.push(payload);
       }
     });
+    localStorage.setItem('wellpatrol_sync_queue', JSON.stringify(q));
+  } catch (e) {
+    console.warn('Queue offline push error:', e);
+  }
+}
+
+async function processOfflineSyncQueue() {
+  if (!navigator.onLine || !App.sheetsUrl) return;
+  let queue = [];
+  try {
+    queue = JSON.parse(localStorage.getItem('wellpatrol_sync_queue') || '[]');
+  } catch (e) { queue = []; }
+  if (!queue.length) return;
+
+  try {
+    await fetch(App.sheetsUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'batch', items: queue })
+    });
+    // При успешной отправке очереди очищаем ее
+    localStorage.removeItem('wellpatrol_sync_queue');
+  } catch (err) {
+    console.warn('Process offline queue error:', err);
+  }
+}
+
+/**
+ * Пакетная отправка группы замеров (Batch) в Google Таблицу за 1 запрос
+ */
+function syncPushBatch(items) {
+  if (!App.sheetsUrl || !items || !items.length) return;
+
+  const normalizedItems = items.map(it => ({
+    action: it.action || 'save',
+    ptv: String(it.ptv || App.ptv).replace(/[^0-9]/g, ''),
+    date: it.date || today(),
+    wellNum: String(it.wellNum).replace(/^#/, '').trim(),
+    author: App.operatorName || 'Оператор',
+    measurement: it.action === 'delete' ? null : {
+      meter_reading: it.measurement?.meter_reading ?? null,
+      flow_rate_q: it.measurement?.flow_rate_q ?? null,
+      p_buf: it.measurement?.p_buf ?? null,
+      p_zat: it.measurement?.p_zat ?? null,
+      strokes_per_minute: it.measurement?.strokes_per_minute ?? null,
+      temperature: it.measurement?.temperature ?? null,
+      time: it.measurement?.time || '',
+      notes: it.measurement?.notes || '',
+      author: App.operatorName || 'Оператор'
+    }
+  }));
+
+  if (!navigator.onLine) {
+    queueOfflinePush(normalizedItems);
+    return;
   }
 
-  const importFile = document.getElementById('import-file');
-  if (importFile) {
-    importFile.addEventListener('change', e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const r = new FileReader();
-      r.onload = async ({ target }) => {
-        try {
-          const parsed = JSON.parse(target.result);
-          await restoreDB(parsed);
-          toast('Восстановлено ✓', 'success');
-          await refresh();
-        } catch (err) {
-          console.error('Restore error:', err);
-          toast('Ошибка: неверный файл', 'error');
-        } finally { e.target.value = ''; }
-      };
-      r.readAsText(file);
-    });
+  fetch(App.sheetsUrl, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'batch', items: normalizedItems })
+  }).catch(err => {
+    console.warn('Sync push batch network error:', err);
+    queueOfflinePush(normalizedItems);
+  });
+}
+
+/**
+ * Тихая отправка одного замера (вызывает syncPushBatch с 1 элементом)
+ */
+function syncPushMeasurement(ptv, date, wellNum, measurement, isDelete = false) {
+  syncPushBatch([{
+    ptv: ptv,
+    date: date,
+    wellNum: wellNum,
+    measurement: measurement,
+    action: isDelete ? 'delete' : 'save'
+  }]);
+}
+
+/**
+ * Тихая синхронизация: загрузка всех ПТВ (9-13) за выбранную дату из Google Таблицы.
+ * Защищает локальные замеры: при пустой таблице не удаляет данные, а выгружает их!
+ */
+async function syncPull(targetDate) {
+  if (!App.sheetsUrl || !navigator.onLine || App.isSyncing) return;
+  App.isSyncing = true;
+
+  try {
+    await processOfflineSyncQueue();
+
+    const date = targetDate || document.getElementById('report-date')?.value || today();
+    const url = App.sheetsUrl + (App.sheetsUrl.includes('?') ? '&' : '?') + 'action=pull&date=' + encodeURIComponent(date) + '&_t=' + Date.now();
+
+    const resp = await fetch(url);
+    const json = await resp.json();
+    if (!json || !json.success || !json.data) {
+      App.isSyncing = false;
+      return;
+    }
+
+    const allWells = await getAllWells();
+    let hasChanges = false;
+    const unsyncedToUpload = [];
+
+    for (const [sheetKey, rows] of Object.entries(json.data)) {
+      const ptvNum = parseInt(sheetKey.replace(/[^0-9]/g, ''), 10);
+      if (isNaN(ptvNum)) continue;
+
+      const ptvWells = allWells.filter(w => w.ptv === ptvNum);
+      if (!ptvWells.length) continue;
+
+      const localMeas = await getMeasurementsByDay(date);
+      const localMap = new Map(localMeas.map(m => [m.well_id, m]));
+
+      const sheetMap = new Map();
+      (rows || []).forEach(r => {
+        const num = String(r.wellNum || '').replace(/^#/, '').trim().toLowerCase();
+        if (num) sheetMap.set(num, r);
+      });
+
+      for (const w of ptvWells) {
+        const wNum = String(w.well_number || '').replace(/^#/, '').trim().toLowerCase();
+        const sheetItem = sheetMap.get(wNum);
+        const localItem = localMap.get(w.id);
+
+        if (sheetItem) {
+          // Есть замер в таблице
+          const sheetAuthor = (sheetItem.author || '').trim();
+          const sheetTimestamp = sheetItem.timestamp ? new Date(sheetItem.timestamp).getTime() : 0;
+          const isOwn = App.operatorName && sheetAuthor.toLowerCase() === App.operatorName.toLowerCase();
+
+          const newMeasData = {
+            well_id: w.id,
+            date: date,
+            time: sheetItem.time || '',
+            meter_reading: sheetItem.meter_reading != null ? Number(sheetItem.meter_reading) : null,
+            flow_rate_q: sheetItem.flow_rate_q != null ? Number(sheetItem.flow_rate_q) : null,
+            p_buf: sheetItem.p_buf != null ? Number(sheetItem.p_buf) : null,
+            p_zat: sheetItem.p_zat != null ? Number(sheetItem.p_zat) : null,
+            strokes_per_minute: sheetItem.strokes_per_minute != null ? Number(sheetItem.strokes_per_minute) : null,
+            temperature: sheetItem.temperature != null ? Number(sheetItem.temperature) : null,
+            notes: sheetItem.notes || '',
+            author: sheetAuthor,
+            timestamp: sheetTimestamp || Date.now(),
+            updated_at: sheetItem.timestamp || new Date().toISOString(),
+            synced: true
+          };
+
+          if (!localItem) {
+            await saveMeasurement(newMeasData);
+            hasChanges = true;
+          } else {
+            // Если чужой замер или Мастер обновил данные в таблице
+            if (!isOwn) {
+              await saveMeasurement(newMeasData);
+              hasChanges = true;
+            } else if (sheetTimestamp && (!localItem.updated_at || sheetItem.timestamp > localItem.updated_at)) {
+              await saveMeasurement(newMeasData);
+              hasChanges = true;
+            } else if (!localItem.synced) {
+              localItem.synced = true;
+              await saveMeasurement(localItem);
+            }
+          }
+        } else if (localItem) {
+          // Замер есть на телефоне, но отсутствует в Google Таблице!
+          const localAuthor = (localItem.author || '').trim();
+          const isOwn = App.operatorName && localAuthor.toLowerCase() === App.operatorName.toLowerCase();
+
+          // ПРОВЕРКА ЗАЩИТЫ: Был ли этот замер ранее подтвержден в таблице?
+          if (localItem.synced) {
+            // Замер был в таблице, а теперь его там нет ➔ значит, Мастер его удалил!
+            if (!isOwn) {
+              await deleteMeasurement(localItem.id);
+              hasChanges = true;
+            } else {
+              const age = Date.now() - (localItem.timestamp || 0);
+              if (age > 15000) {
+                await deleteMeasurement(localItem.id);
+                hasChanges = true;
+              }
+            }
+          } else {
+            // Замер ещё ни разу не был в таблице (создан офлайн или таблица только что подключена)
+            // НИ В КОЕМ СЛУЧАЕ НЕ УДАЛЯЕМ! Выгружаем его в Google Таблицу:
+            unsyncedToUpload.push({
+              ptv: ptvNum,
+              date: date,
+              wellNum: w.well_number,
+              measurement: localItem,
+              action: 'save'
+            });
+            localItem.synced = true;
+            await saveMeasurement(localItem);
+          }
+        }
+      }
+    }
+
+    // Если нашлись незалитые локальные замеры — выгружаем их пакетно
+    if (unsyncedToUpload.length > 0) {
+      syncPushBatch(unsyncedToUpload);
+    }
+
+    if (hasChanges) {
+      await refresh();
+      const bulkModal = document.getElementById('modal-bulk-edit');
+      if (bulkModal && !bulkModal.classList.contains('hidden') && typeof loadBulkDataForDate === 'function') {
+        await loadBulkDataForDate(date);
+      }
+    }
+
+  } catch (err) {
+    console.warn('Sync pull error:', err);
+  } finally {
+    App.isSyncing = false;
   }
 }
 
@@ -1053,19 +1368,6 @@ const calculateVolume = (v1, t1, v2, t2) => {
   };
 };
 
-function initExportModal() {
-  const modal = document.getElementById('modal-export');
-  const openBtn = document.getElementById('btn-open-export');
-  const closeBtn = document.getElementById('btn-close-export');
-  const backdrop = document.getElementById('export-backdrop');
-
-  if (!modal) return;
-  const close = () => modal.classList.add('hidden');
-
-  openBtn?.addEventListener('click', () => modal.classList.remove('hidden'));
-  closeBtn?.addEventListener('click', close);
-  backdrop?.addEventListener('click', close);
-}
 
 /* ── Таб 3: П/З (Перезамер) ────────────────────────────── */
 function initPz() {
@@ -1553,6 +1855,7 @@ function initScanOcr() {
     const rows = document.querySelectorAll('#scan-table-body tr');
     let importedCount = 0;
     let skippedCount = 0;
+    const batchItems = [];
 
     for (const row of rows) {
       const check = row.querySelector('.scan-row-check');
@@ -1577,7 +1880,7 @@ function initScanOcr() {
         return isNaN(v) ? null : v;
       };
 
-      await saveMeasurement({
+      const measData = {
         well_id: wellId,
         date: importDate,
         time: row.querySelector('.in-time')?.value?.trim() || now(),
@@ -1588,10 +1891,26 @@ function initScanOcr() {
         strokes_per_minute: numOrNull(row.querySelector('.in-strokes')),
         temperature: numOrNull(row.querySelector('.in-temp')),
         notes: 'Импортировано с фото рапорта',
-        timestamp: Date.now()
+        author: App.operatorName || 'Оператор',
+        timestamp: Date.now(),
+        updated_at: new Date().toISOString(),
+        synced: true
+      };
+
+      await saveMeasurement(measData);
+      batchItems.push({
+        ptv: App.ptv,
+        date: importDate,
+        wellNum: wellNumber,
+        measurement: measData,
+        action: 'save'
       });
 
       importedCount++;
+    }
+
+    if (batchItems.length > 0) {
+      syncPushBatch(batchItems);
     }
 
     if (importedCount > 0) {
@@ -1799,10 +2118,18 @@ function initBulkEdit() {
     const rows = tbody.querySelectorAll('tr');
     let savedCount = 0;
     let clearedCount = 0;
+    const batchItems = [];
 
     for (const tr of rows) {
+      if (tr.dataset.locked === 'true') {
+        continue; // Заблокировано чужим автором: пропускаем
+      }
+
       const wellId = tr.dataset.wellId;
       if (!wellId) continue;
+
+      const wellObj = App.wells.find(w => w.id === wellId) || findWellByNumber(wellId);
+      const wellNum = wellObj ? wellObj.well_number : wellId.replace(/^[0-9]+-/, '');
 
       const numOrNull = el => {
         const v = parseFloat(el?.value);
@@ -1832,7 +2159,10 @@ function initBulkEdit() {
           strokes_per_minute: strokes,
           temperature: temp,
           notes: notesVal,
-          timestamp: Date.now()
+          author: App.operatorName || 'Оператор',
+          timestamp: Date.now(),
+          updated_at: new Date().toISOString(),
+          synced: true
         };
 
         if (tr.dataset.dbId) {
@@ -1840,16 +2170,33 @@ function initBulkEdit() {
         }
 
         await saveMeasurement(measData);
+        batchItems.push({
+          ptv: App.ptv,
+          date: importDate,
+          wellNum: wellNum,
+          measurement: measData,
+          action: 'save'
+        });
         savedCount++;
       } else if (tr.dataset.dbId) {
         // Поля очищены кнопкой "✕" — удаляем замер из БД
         try {
           await deleteMeasurement(Number(tr.dataset.dbId));
+          batchItems.push({
+            ptv: App.ptv,
+            date: importDate,
+            wellNum: wellNum,
+            action: 'delete'
+          });
           clearedCount++;
         } catch (e) {
           console.error(e);
         }
       }
+    }
+
+    if (batchItems.length > 0) {
+      syncPushBatch(batchItems);
     }
 
     if (savedCount > 0 || clearedCount > 0) {
@@ -1879,6 +2226,7 @@ async function loadBulkDataForDate(dateStr) {
 
   ptvWells.forEach(w => {
     const m = measMap.get(w.id);
+    const isLocked = Boolean(m && m.author && App.operatorName && m.author.toLowerCase() !== App.operatorName.toLowerCase());
     const tr = createBulkTableRow({
       well_id: w.id,
       well_number: w.well_number,
@@ -1890,7 +2238,9 @@ async function loadBulkDataForDate(dateStr) {
       strokes_per_minute: m?.strokes_per_minute,
       temperature: m?.temperature,
       time: m?.time,
-      notes: m?.notes
+      notes: m?.notes,
+      author: m?.author,
+      isLocked: isLocked
     });
     frag.appendChild(tr);
   });
@@ -1903,23 +2253,34 @@ function createBulkTableRow(data = {}) {
   const tr = document.createElement('tr');
   if (data.id) tr.dataset.dbId = data.id;
   if (data.well_id) tr.dataset.wellId = data.well_id;
+  if (data.isLocked) {
+    tr.classList.add('row-locked');
+    tr.dataset.locked = 'true';
+  }
+
+  const disabledAttr = data.isLocked ? 'disabled' : '';
+  const clearBtnHtml = data.isLocked
+    ? `<span title="Замерено другим оператором (${data.author || ''})" style="font-size:0.85rem; cursor:not-allowed;">🔒</span>`
+    : `<button type="button" class="btn-clear-row" title="Очистить поля этой скважины" style="background:none; border:none; color:var(--c-danger); font-size:1.1rem; font-weight:bold; cursor:pointer; padding:2px 6px;">✕</button>`;
 
   tr.innerHTML = `
-    <td><b>${data.well_number || ''}</b></td>
-    <td><input type="number" step="any" class="bulk-in-meter" value="${data.meter_reading ?? ''}" style="width:75px;" placeholder="—"></td>
-    <td><input type="number" step="any" class="bulk-in-q" value="${data.flow_rate_q ?? ''}" style="width:45px;" placeholder="—"></td>
-    <td><input type="number" step="0.1" class="bulk-in-pbuf" value="${data.p_buf ?? ''}" style="width:45px;" placeholder="—"></td>
-    <td><input type="number" step="0.1" class="bulk-in-pzat" value="${data.p_zat ?? ''}" style="width:45px;" placeholder="—"></td>
-    <td><input type="number" step="1" class="bulk-in-strokes" value="${data.strokes_per_minute ?? ''}" style="width:45px;" placeholder="—"></td>
-    <td><input type="number" step="1" class="bulk-in-temp" value="${data.temperature ?? ''}" style="width:40px;" placeholder="—"></td>
-    <td><input type="text" class="bulk-in-time" value="${data.time || ''}" style="width:50px;" placeholder="—"></td>
-    <td><input type="text" class="bulk-in-notes" value="${data.notes || ''}" placeholder="Прим." style="width:65px;"></td>
-    <td><button type="button" class="btn-clear-row" title="Очистить поля этой скважины" style="background:none; border:none; color:var(--c-danger); font-size:1.1rem; font-weight:bold; cursor:pointer; padding:2px 6px;">✕</button></td>
+    <td><b>${data.well_number || ''}</b>${data.isLocked ? `<span style="font-size:0.65rem; color:var(--c-warning); display:block; font-weight:600;">🔒 ${data.author || ''}</span>` : ''}</td>
+    <td><input type="number" step="any" class="bulk-in-meter" value="${data.meter_reading ?? ''}" style="width:75px;" placeholder="—" ${disabledAttr}></td>
+    <td><input type="number" step="any" class="bulk-in-q" value="${data.flow_rate_q ?? ''}" style="width:45px;" placeholder="—" ${disabledAttr}></td>
+    <td><input type="number" step="0.1" class="bulk-in-pbuf" value="${data.p_buf ?? ''}" style="width:45px;" placeholder="—" ${disabledAttr}></td>
+    <td><input type="number" step="0.1" class="bulk-in-pzat" value="${data.p_zat ?? ''}" style="width:45px;" placeholder="—" ${disabledAttr}></td>
+    <td><input type="number" step="1" class="bulk-in-strokes" value="${data.strokes_per_minute ?? ''}" style="width:45px;" placeholder="—" ${disabledAttr}></td>
+    <td><input type="number" step="1" class="bulk-in-temp" value="${data.temperature ?? ''}" style="width:40px;" placeholder="—" ${disabledAttr}></td>
+    <td><input type="text" class="bulk-in-time" value="${data.time || ''}" style="width:50px;" placeholder="—" ${disabledAttr}></td>
+    <td><input type="text" class="bulk-in-notes" value="${data.notes || ''}" placeholder="Прим." style="width:65px;" ${disabledAttr}></td>
+    <td>${clearBtnHtml}</td>
   `;
 
-  tr.querySelector('.btn-clear-row').addEventListener('click', () => {
-    tr.querySelectorAll('input').forEach(input => input.value = '');
-  });
+  if (!data.isLocked) {
+    tr.querySelector('.btn-clear-row')?.addEventListener('click', () => {
+      tr.querySelectorAll('input').forEach(input => input.value = '');
+    });
+  }
 
   return tr;
 }

@@ -50,8 +50,8 @@
         <button type="button" class="btn-header-action btn-scan-action" id="btn-open-scan" title="Распознать суточный рапорт с фото (Gemini)">
           <span>📸</span> <span class="btn-text">Скан</span>
         </button>
-        <button type="button" class="btn-header-action" id="btn-open-export" title="Экспорт и Бэкап">
-          <span>📤</span> <span class="btn-text">Экспорт</span>
+        <button type="button" class="btn-header-action" id="btn-open-settings" title="Настройки и Синхронизация">
+          <span>⚙️</span> <span class="btn-text">Настройки</span>
         </button>
         <div class="ptv-control">
           <select id="ptv-select">
@@ -263,34 +263,46 @@
     </div>
   </div>
 
-  <!-- МОДАЛ: ЭКСПОРТ И БЭКАП -->
-  <div id="modal-export" class="modal hidden">
-    <div class="modal-backdrop" id="export-backdrop"></div>
+  <!-- МОДАЛ: НАСТРОЙКИ & СИНХРОНИЗАЦИЯ -->
+  <div id="modal-settings" class="modal hidden">
+    <div class="modal-backdrop" id="settings-backdrop"></div>
     <div class="modal-content">
       <div class="modal-header">
         <div>
-          <h2>Экспорт & Бэкап</h2>
-          <span class="sub-title">Выгрузка и сохранение данных</span>
+          <h2>⚙️ Настройки</h2>
+          <span class="sub-title">Синхронизация с Google Таблицей</span>
         </div>
-        <button class="modal-close" id="btn-close-export">&times;</button>
+        <button class="modal-close" id="btn-close-settings">&times;</button>
       </div>
-      <div class="card export-card">
-        <h2 class="card-title">📊 CSV-экспорт</h2>
-        <p class="card-desc">Выгрузить данные в CSV для Excel.</p>
+
+      <div class="card settings-card">
         <div class="form-group">
-          <label for="export-date">Дата:</label>
-          <input type="date" id="export-date">
+          <label for="setting-operator-name">Имя / ФИО оператора <span style="color:var(--c-danger);">*</span></label>
+          <input type="text" id="setting-operator-name" placeholder="например, Кенжебаев Р" required autocomplete="name">
+          <span style="font-size:0.72rem; color:var(--c-text-muted); margin-top:3px; display:block;">
+            Защищает ваши замеры от перезаписи другими операторами (🔒 Авторская блокировка).
+          </span>
         </div>
-        <button id="btn-export-csv" class="btn btn-primary full-width">Экспорт (.csv)</button>
+
+        <div class="form-group" style="margin-top:12px;">
+          <label for="setting-sheets-url">URL веб-приложения Google Таблицы</label>
+          <input type="url" id="setting-sheets-url" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off">
+          <span style="font-size:0.72rem; color:var(--c-text-muted); margin-top:3px; display:block;">
+            URL развернутого веб-приложения Google Apps Script (доступ: «Все / Anyone»).
+          </span>
+        </div>
+
+        <div style="margin-top:14px; display:flex; gap:8px; align-items:center;">
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-test-connection" style="flex:1;">
+            🔍 Проверить подключение
+          </button>
+        </div>
+        <div id="connection-status-msg" style="font-size:0.75rem; margin-top:8px; display:none; padding:6px 10px; border-radius:var(--r-sm);"></div>
       </div>
-      <div class="card export-card">
-        <h2 class="card-title">💾 Бэкап (JSON)</h2>
-        <p class="card-desc">Сохранить / восстановить историю.</p>
-        <button id="btn-export-backup" class="btn full-width">Сохранить копию (.json)</button>
-        <div class="restore-zone">
-          <label for="import-file" class="file-label">Выбрать файл</label>
-          <input type="file" id="import-file" accept=".json">
-        </div>
+
+      <div class="modal-footer" style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" id="btn-cancel-settings">Отмена</button>
+        <button type="button" class="btn btn-primary" id="btn-save-settings">✓ Сохранить</button>
       </div>
     </div>
   </div>
@@ -575,11 +587,11 @@
       <form id="form-excel-export" novalidate>
         <div class="form-group">
           <label for="export-master-fio">Ф.И.О Мастера <span style="color:var(--c-danger);">*</span></label>
-          <input type="text" id="export-master-fio" required placeholder="например, Иванов И.И.">
+          <input type="text" id="export-master-fio" required placeholder="например, Кенжебаев Р">
         </div>
         <div class="form-group">
           <label for="export-operator-fio">Ф.И.О Оператора <span style="color:var(--c-danger);">*</span></label>
-          <input type="text" id="export-operator-fio" required placeholder="например, Петров П.П.">
+          <input type="text" id="export-operator-fio" required placeholder="например, Кенжебаев Р">
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" id="btn-cancel-excel-export">Отмена</button>

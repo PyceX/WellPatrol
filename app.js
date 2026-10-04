@@ -406,18 +406,16 @@ async function renderPatrol() {
       measInfo = ` · ⏰ ${m.time}`;
     }
 
-    const authorTag = isLocked ? ` · <span class="card-author-tag">🔒 ${m.author}</span>` : '';
-
     el.innerHTML = `
       <div class="well-info">
         <div class="well-title"><span>№ ${w.well_number}</span>${dist}</div>
-        <div class="well-subtext">ПТВ-${w.ptv}${measInfo}${authorTag}</div>
+        <div class="well-subtext">ПТВ-${w.ptv}${measInfo}</div>
       </div>
-      <div class="status-check">${ok ? (isLocked ? '✓ 🔒' : '✓') : '○'}</div>`;
+      <div class="status-check">${ok ? (isLocked ? '🔒' : '✓') : '○'}</div>`;
 
     el.addEventListener('click', () => {
       if (isLocked) {
-        toast(`🔒 Скважина № ${w.well_number} уже замерена (Оператор: ${m.author})`, 'warning');
+        toast(`№ ${w.well_number} | ${m.author || '—'} | ${m.time || '—'}`, 'warning');
         return;
       }
       openMeasure(w);
@@ -655,7 +653,7 @@ async function openMeasure(well) {
   document.getElementById('input-temp').placeholder    = prevMeas?.temperature != null ? prevMeas.temperature : '0';
   const ex = await getMeasurementByDate(well.id, d);
   if (ex && ex.author && App.operatorName && ex.author.toLowerCase() !== App.operatorName.toLowerCase()) {
-    toast(`🔒 Скважина № ${well.well_number} уже замерена (Оператор: ${ex.author})`, 'warning');
+    toast(`№ ${well.well_number} | ${ex.author || '—'} | ${ex.time || '—'}`, 'warning');
     return;
   }
 
@@ -2260,11 +2258,11 @@ function createBulkTableRow(data = {}) {
 
   const disabledAttr = data.isLocked ? 'disabled' : '';
   const clearBtnHtml = data.isLocked
-    ? `<span title="Замерено другим оператором (${data.author || ''})" style="font-size:0.85rem; cursor:not-allowed;">🔒</span>`
+    ? `<span style="font-size:0.95rem; cursor:default; user-select:none;">🔒</span>`
     : `<button type="button" class="btn-clear-row" title="Очистить поля этой скважины" style="background:none; border:none; color:var(--c-danger); font-size:1.1rem; font-weight:bold; cursor:pointer; padding:2px 6px;">✕</button>`;
 
   tr.innerHTML = `
-    <td><b>${data.well_number || ''}</b>${data.isLocked ? `<span style="font-size:0.65rem; color:var(--c-warning); display:block; font-weight:600;">🔒 ${data.author || ''}</span>` : ''}</td>
+    <td><b>${data.well_number || ''}</b></td>
     <td><input type="number" step="any" class="bulk-in-meter" value="${data.meter_reading ?? ''}" style="width:75px;" placeholder="—" ${disabledAttr}></td>
     <td><input type="number" step="any" class="bulk-in-q" value="${data.flow_rate_q ?? ''}" style="width:45px;" placeholder="—" ${disabledAttr}></td>
     <td><input type="number" step="0.1" class="bulk-in-pbuf" value="${data.p_buf ?? ''}" style="width:45px;" placeholder="—" ${disabledAttr}></td>

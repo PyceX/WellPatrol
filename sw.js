@@ -1,4 +1,4 @@
-const CACHE_NAME = 'dng-patrol-v5';
+const CACHE_NAME = 'dng-patrol-v6';
 const ASSETS = [
   './',
   './index.html',

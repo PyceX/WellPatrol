@@ -665,7 +665,7 @@ async function openMeasure(well) {
     'input-pbuf':    ex?.p_buf ?? (prevMeas?.p_buf ?? ''),
     'input-pzat':    ex?.p_zat ?? (prevMeas?.p_zat ?? ''),
     'input-strokes': ex?.strokes_per_minute ?? (prevMeas?.strokes_per_minute ?? ''),
-    'input-temp':    ex?.temperature ?? (prevMeas?.temperature ?? ''),
+    'input-temp':    ex?.temperature ?? '',
     'input-notes':   ex?.notes ?? '',
   };
   Object.entries(fields).forEach(([id, v]) => document.getElementById(id).value = v);

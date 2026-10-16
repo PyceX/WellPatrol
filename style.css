@@ -190,16 +190,7 @@ body {
   cursor: pointer; outline: none; box-shadow: var(--shadow-pixel);
 }
 
-.btn-add-well {
-  width: 32px; height: 32px; min-width: 32px; min-height: 32px;
-  border-radius: var(--r-sm); background-color: var(--c-primary); color: var(--c-btn-primary-text);
-  border: 1.5px solid var(--c-pixel-border); font-family: var(--font-sans);
-  font-size: 1.15rem; font-weight: 800;
-  display: inline-flex; align-items: center; justify-content: center;
-  cursor: pointer; box-shadow: var(--shadow-pixel); line-height: 1;
-}
 
-.btn-add-well:active { transform: translate(1px, 1px); }
 
 .btn-header-action {
   height: 32px; padding: 0 8px; border-radius: var(--r-sm);
@@ -873,26 +864,6 @@ input:checked + .slider:before { transform: translateX(18px); background-color: 
   white-space: nowrap;
 }
 
-.map-picker-box {
-  border: 1.5px solid var(--c-pixel-border); border-radius: var(--r-sm);
-  overflow: hidden; background-color: var(--c-surface-2); margin-top: 2px;
-}
-
-.map-picker-canvas { width: 100%; height: 160px; background-color: var(--c-surface-2); z-index: 1; }
-
-.map-picker-footer {
-  padding: 6px 8px; display: flex; align-items: center; justify-content: space-between;
-  background-color: var(--c-surface); border-top: 1.5px solid var(--c-pixel-border);
-  font-family: var(--font-mono); font-size: 0.7rem; color: var(--c-text-muted); flex-wrap: wrap; gap: 2px;
-}
-
-.map-coords-text b { color: var(--c-primary); font-weight: 700; }
-
-.btn-text-action {
-  background: none; border: none; padding: 0;
-  font-family: var(--font-sans); font-size: 0.75rem; font-weight: 700;
-  color: var(--c-primary); cursor: pointer; text-decoration: underline;
-}
 
 /* ── 13. EXPORT & UTILITIES ──────────────────────────────── */
 .card, .export-card {
@@ -922,26 +893,7 @@ input[type="file"] {
   width: 100%; font-family: var(--font-mono); font-size: 0.78rem; color: var(--c-text-muted); cursor: pointer;
 }
 
-.code-output {
-  position: relative; background-color: var(--c-bg);
-  border: 1.5px solid var(--c-pixel-border); border-radius: var(--r-sm);
-  padding: var(--gap-sm); margin-bottom: var(--gap-sm);
-  box-shadow: var(--shadow-pixel);
-}
 
-.code-output pre {
-  margin: 0; overflow-x: auto;
-  font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.4;
-  color: var(--c-success); padding-top: 18px;
-}
-
-.code-output .btn-copy {
-  position: absolute; top: 6px; right: 6px;
-  height: 24px; padding: 0 6px;
-  font-family: var(--font-sans); font-size: 0.7rem; font-weight: 700;
-  background-color: var(--c-surface-2); border: 1px solid var(--c-pixel-border);
-  border-radius: var(--r-sm); color: var(--c-primary); cursor: pointer;
-}
 
 .toast {
   position: fixed; bottom: calc(var(--nav-h) + var(--sab) + 12px);

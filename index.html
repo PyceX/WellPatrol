@@ -31,7 +31,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -62,7 +61,6 @@
             <option value="13">ПТВ-13</option>
           </select>
         </div>
-        <button class="btn-add-well" id="btn-add-well" title="Добавить скважину">+</button>
       </div>
     </div>
   </header>
@@ -405,53 +403,6 @@
       </form>
     </div>
   </div>
-
-  <!-- МОДАЛ: ДОБАВИТЬ СКВАЖИНУ -->
-  <div id="modal-add-well" class="modal hidden">
-    <div class="modal-backdrop" id="add-well-backdrop"></div>
-    <div class="modal-content">
-      <div class="modal-header">
-        <div>
-          <h2 id="add-well-title">Добавить скважину</h2>
-          <span class="sub-title" id="add-well-ptv-label">ПТВ-11</span>
-        </div>
-        <button class="modal-close" id="btn-close-add-well">&times;</button>
-      </div>
-      <form id="form-add-well" novalidate>
-        <div class="form-group">
-          <label>Номер скважины</label>
-          <input type="text" id="add-well-number" inputmode="text" placeholder="1170" required>
-        </div>
-        <div class="form-group">
-          <div class="row-between">
-            <label>GPS координаты (метка на карте)</label>
-            <button type="button" class="btn-text-action" id="btn-snap-gps">📍 Моё GPS</button>
-          </div>
-          <div class="map-picker-box">
-            <div id="add-well-map" class="map-picker-canvas"></div>
-            <div class="map-picker-footer">
-              <span class="map-coords-text">Координаты: <b id="add-well-lat">45.3150</b>, <b id="add-well-lon">51.7850</b></span>
-              <span class="map-hint-text">Кликните или потяните метку</span>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" id="btn-cancel-add-well">Отмена</button>
-          <button type="submit" class="btn btn-primary">Добавить + Код</button>
-        </div>
-      </form>
-
-      <!-- Блок с готовым кодом -->
-      <div id="code-output-area" class="code-output hidden">
-        <div class="code-output-header">
-          <span>📋 Код для db.js:</span>
-          <button type="button" class="btn-copy" id="btn-copy-code">Копировать</button>
-        </div>
-        <pre id="code-output-pre"><code id="code-output-text"></code></pre>
-      </div>
-    </div>
-  </div>
-
   <!-- МОДАЛ: ИМПОРТ РАПОРТА С ФОТО (GEMINI) -->
   <div id="modal-scan-ocr" class="modal hidden">
     <div class="modal-backdrop" id="scan-backdrop"></div>
@@ -604,8 +555,7 @@
   <!-- TOAST -->
   <div id="toast" class="toast hidden"></div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx-populate@1.21.0/browser/xlsx-populate.min.js"></script>
+  <script src="./xlsx-populate.min.js"></script>
   <script src="db.js"></script>
   <script src="app.js"></script>
   <script>

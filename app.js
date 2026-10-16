@@ -5,6 +5,9 @@
  */
 'use strict';
 
+/* ── Вшитая ссылка на Google Таблицу (Apps Script) ───────── */
+const DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwr_rQfZyZ1SVdHPR3myyR7K7H6O2lXIvldGe-VvHjbH9xJlQDNC4hY99FPak5yBv-CoQ/exec';
+
 /* ── Состояние ───────────────────────────────────────────── */
 const App = {
   ptv: localStorage.getItem('dng_active_ptv') || '11',
@@ -20,9 +23,32 @@ const App = {
   sortMode: localStorage.getItem('dng_sort_mode') || 'num',
   theme: localStorage.getItem('dng_theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'),
   operatorName: (localStorage.getItem('wellpatrol_operator_name') || localStorage.getItem('dng_operator_fio') || '').trim(),
-  sheetsUrl: (localStorage.getItem('wellpatrol_sheets_url') || '').trim(),
+  sheetsUrl: DEFAULT_SHEETS_URL,
   isSyncing: false,
 };
+
+/* ── Валидация и нормализация Ф.И.О ("Фамилия И" без точки) ─ */
+function normalizeFio(raw) {
+  if (!raw) return '';
+  const clean = String(raw).replace(/\./g, '').trim();
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return clean;
+  const surname = parts[0].split('-').map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join('-');
+  const initial = parts[1].charAt(0).toUpperCase();
+  return `${surname} ${initial}`;
+}
+
+function isValidFio(raw) {
+  if (!raw || typeof raw !== 'string') return false;
+  const clean = raw.replace(/\./g, '').trim();
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return false;
+  const surname = parts[0];
+  const initial = parts[1];
+  if (surname.length < 2 || initial.length < 1) return false;
+  const letterRegex = /^[А-Яа-яЁёӘәІіҢңҒғҮүҰұҚқӨөҺһA-Za-z\-]+$/;
+  return letterRegex.test(surname) && letterRegex.test(initial);
+}
 
 /* ── ТЕМА (День / Ночь) ─────────────────────────────────── */
 function applyTheme(theme) {
@@ -133,10 +159,11 @@ function toast(msg, type = '') {
   el.className = `toast${type ? ' ' + type : ''}`;
   void el.offsetWidth;
   el.classList.add('show');
+  const duration = (msg && msg.length > 35) ? 3500 : 2500;
   toastTmr = setTimeout(() => {
     el.classList.remove('show');
     setTimeout(() => el.classList.add('hidden'), 250);
-  }, 2500);
+  }, duration);
 }
 
 /* ── Инициализация ───────────────────────────────────────── */
@@ -163,9 +190,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     syncPull();
   }
 
-  // Запрос имени оператора при первом открытии, если не заполнено
+  // Запрос имени оператора при первом открытии, если не заполнено (Строгий вход)
   if (!App.operatorName) {
-    document.getElementById('modal-settings')?.classList.remove('hidden');
+    if (typeof window.openSettingsModal === 'function') {
+      window.openSettingsModal(true);
+    } else {
+      document.getElementById('modal-settings')?.classList.remove('hidden');
+    }
   }
 
   // При восстановлении интернета — тихий пулл и отправка очереди
@@ -828,42 +859,54 @@ function initSettingsModal() {
   const testBtn = document.getElementById('btn-test-connection');
   const backdrop = document.getElementById('settings-backdrop');
   const nameInput = document.getElementById('setting-operator-name');
-  const urlInput = document.getElementById('setting-sheets-url');
   const statusMsg = document.getElementById('connection-status-msg');
+  const titleEl = document.getElementById('settings-modal-title');
 
   if (!modal) return;
-  const close = () => modal.classList.add('hidden');
 
-  const open = () => {
+  const close = () => {
+    if (!App.operatorName) return; // Нельзя закрыть без заполненного ФИО
+    modal.classList.add('hidden');
+  };
+
+  const open = (isOnboarding = false) => {
+    const isNew = !App.operatorName || isOnboarding;
+
+    if (titleEl) titleEl.textContent = isNew ? '👋 Вход оператора' : '⚙️ Настройки';
+
+    if (closeBtn) closeBtn.classList.toggle('hidden', isNew);
+    if (cancelBtn) cancelBtn.classList.toggle('hidden', isNew);
+    if (saveBtn) saveBtn.textContent = isNew ? '✓ Начать работу' : '✓ Сохранить';
+
     if (nameInput) nameInput.value = App.operatorName || '';
-    if (urlInput) urlInput.value = App.sheetsUrl || '';
     if (statusMsg) {
       statusMsg.style.display = 'none';
       statusMsg.textContent = '';
       statusMsg.className = '';
     }
     modal.classList.remove('hidden');
+    setTimeout(() => nameInput?.focus(), 150);
   };
 
-  openBtn?.addEventListener('click', open);
+  openBtn?.addEventListener('click', () => open(false));
   closeBtn?.addEventListener('click', close);
   cancelBtn?.addEventListener('click', close);
-  backdrop?.addEventListener('click', close);
+  backdrop?.addEventListener('click', () => {
+    if (App.operatorName) close();
+  });
 
   testBtn?.addEventListener('click', async () => {
-    const rawUrl = (urlInput?.value || '').trim();
-    if (!rawUrl) {
-      showStatus('⚠️ Введите URL веб-приложения', 'error');
-      return;
-    }
-    if (!rawUrl.startsWith('http')) {
-      showStatus('⚠️ URL должен начинаться с https://', 'error');
+    const rawName = (nameInput?.value || '').trim();
+    if (!isValidFio(rawName)) {
+      showStatus('⚠️ Сначала укажите корректное Ф.И.О (например, Кенжебаев Р)', 'error');
+      toast('Сначала укажите Ф.И.О в формате: Фамилия И (например, Кенжебаев Р)', 'error');
+      nameInput?.focus();
       return;
     }
 
     showStatus('⏳ Проверка связи с Google Таблицей...', 'info');
     try {
-      const pingUrl = rawUrl + (rawUrl.includes('?') ? '&' : '?') + 'action=ping&_t=' + Date.now();
+      const pingUrl = DEFAULT_SHEETS_URL + (DEFAULT_SHEETS_URL.includes('?') ? '&' : '?') + 'action=ping&_t=' + Date.now();
       const resp = await fetch(pingUrl, { method: 'GET' });
       const json = await resp.json();
       if (json && json.success) {
@@ -873,30 +916,30 @@ function initSettingsModal() {
       }
     } catch (err) {
       console.warn('Test connection error:', err);
-      showStatus('❌ Не удалось подключиться: проверьте URL или доступ «Все» (Anyone) при развертывании', 'error');
+      showStatus('❌ Не удалось подключиться: проверьте подключение к интернету', 'error');
     }
   });
 
   saveBtn?.addEventListener('click', async () => {
-    const name = (nameInput?.value || '').trim();
-    const url = (urlInput?.value || '').trim();
+    const rawName = (nameInput?.value || '').trim();
 
-    if (!name) {
-      toast('Введите имя / ФИО оператора', 'error');
+    if (!isValidFio(rawName)) {
+      toast('Введите Ф.И.О в формате: Фамилия И (например, Кенжебаев Р)', 'error');
       nameInput?.focus();
       return;
     }
 
-    App.operatorName = name;
-    App.sheetsUrl = url;
-    localStorage.setItem('wellpatrol_operator_name', name);
-    localStorage.setItem('dng_operator_fio', name);
-    localStorage.setItem('wellpatrol_sheets_url', url);
+    const formattedName = normalizeFio(rawName);
+    App.operatorName = formattedName;
+    App.sheetsUrl = DEFAULT_SHEETS_URL;
+    localStorage.setItem('wellpatrol_operator_name', formattedName);
+    localStorage.setItem('dng_operator_fio', formattedName);
+    localStorage.setItem('wellpatrol_sheets_url', DEFAULT_SHEETS_URL);
 
-    toast('✓ Настройки сохранены', 'success');
-    close();
+    toast('✓ Профиль сохранен: ' + formattedName, 'success');
+    modal.classList.add('hidden');
     await refresh();
-    if (url && navigator.onLine) {
+    if (navigator.onLine) {
       syncPull();
     }
   });
@@ -914,6 +957,9 @@ function initSettingsModal() {
       statusMsg.style.border = '1px solid var(--c-border)';
     }
   }
+
+  // Делаем доступной функцию для стартового онбординга
+  window.openSettingsModal = open;
 }
 
 /**
@@ -2160,7 +2206,7 @@ function initExcelReportModal() {
   const backdrop = document.getElementById('excel-export-backdrop');
   const form = document.getElementById('form-excel-export');
   const masterInput = document.getElementById('export-master-fio');
-  const operatorInput = document.getElementById('export-operator-fio');
+  const operatorBadge = document.getElementById('export-operator-badge');
   const label = document.getElementById('excel-export-ptv-date-label');
 
   if (!modal || !openBtn) return;
@@ -2176,9 +2222,12 @@ function initExcelReportModal() {
     }
 
     if (masterInput) masterInput.value = localStorage.getItem('dng_master_fio') || '';
-    if (operatorInput) operatorInput.value = localStorage.getItem('dng_operator_fio') || '';
+    if (operatorBadge) {
+      operatorBadge.textContent = App.operatorName || 'Не указан';
+    }
 
     modal.classList.remove('hidden');
+    setTimeout(() => masterInput?.focus(), 150);
   });
 
   closeBtn?.addEventListener('click', closeModal);
@@ -2188,15 +2237,15 @@ function initExcelReportModal() {
   form?.addEventListener('submit', async e => {
     e.preventDefault();
     const masterFio = masterInput?.value.trim() || '';
-    const operatorFio = operatorInput?.value.trim() || '';
+    const operatorFio = App.operatorName || localStorage.getItem('dng_operator_fio') || 'Оператор';
 
-    if (!masterFio || !operatorFio) {
-      toast('Заполните Ф.И.О Мастера и Оператора', 'error');
+    if (!masterFio) {
+      toast('Заполните Ф.И.О Мастера', 'error');
+      masterInput?.focus();
       return;
     }
 
     localStorage.setItem('dng_master_fio', masterFio);
-    localStorage.setItem('dng_operator_fio', operatorFio);
 
     closeModal();
     try {

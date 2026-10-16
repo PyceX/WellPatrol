@@ -898,18 +898,21 @@ input[type="file"] {
 .toast {
   position: fixed; bottom: calc(var(--nav-h) + var(--sab) + 12px);
   left: 50%; transform: translateX(-50%) translateY(20px);
-  z-index: 2000; padding: 8px 14px;
+  z-index: 2000; padding: 10px 16px;
   border-radius: var(--r-sm); border: 1.5px solid var(--c-pixel-border);
   font-family: var(--font-sans); font-size: 0.82rem; font-weight: 700;
   color: #ffffff; background-color: var(--c-surface-3);
   box-shadow: var(--shadow-pixel-lg); opacity: 0; pointer-events: none;
   transition: opacity 0.15s ease, transform 0.15s ease;
-  max-width: 90vw; text-align: center; white-space: nowrap;
+  max-width: min(92vw, 420px); width: max-content;
+  text-align: center; white-space: normal; word-break: break-word; line-height: 1.35;
 }
 
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
 .toast.success { background-color: #059669; color: #ffffff; }
 .toast.error { background-color: var(--c-danger); color: #ffffff; }
+.toast.warning { background-color: #d97706; color: #ffffff; }
+.toast.info { background-color: #0284c7; color: #ffffff; }
 .toast.hidden { display: none; }
 
 .empty-state {

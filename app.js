@@ -240,27 +240,39 @@ function initPtv() {
 }
 
 /* ── Навигация ───────────────────────────────────────────── */
-function initNav() {
+function switchTab(id) {
   const btns = document.querySelectorAll('.nav-btn');
   const tabs = document.querySelectorAll('.tab-pane');
 
+  btns.forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  tabs.forEach(t => t.classList.toggle('active', t.id === id));
+  localStorage.setItem('dng_active_tab', id);
+
+  if (id === 'tab-report') {
+    renderReport();
+    if (App.sheetsUrl && navigator.onLine && (Date.now() - (App.lastPullTime || 0) > PULL_COOLDOWN_MS)) {
+      syncPull();
+    }
+  } else if (id === 'tab-patrol') {
+    renderPatrol();
+  } else if (id === 'tab-pz') {
+    renderPz();
+  }
+}
+
+function initNav() {
+  const btns = document.querySelectorAll('.nav-btn');
   btns.forEach(btn => {
     btn.addEventListener('click', () => {
-      const id = btn.dataset.tab;
-      btns.forEach(b => b.classList.remove('active'));
-      tabs.forEach(t => t.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById(id)?.classList.add('active');
-      if (id === 'tab-report') {
-        renderReport();
-        if (App.sheetsUrl && navigator.onLine && (Date.now() - (App.lastPullTime || 0) > PULL_COOLDOWN_MS)) {
-          syncPull();
-        }
-      }
-      else if (id === 'tab-patrol') renderPatrol();
-      else if (id === 'tab-pz') renderPz();
+      switchTab(btn.dataset.tab);
     });
   });
+
+  // Восстанавливаем сохраненную вкладку при обновлении страницы
+  const savedTab = localStorage.getItem('dng_active_tab');
+  if (savedTab && savedTab !== 'tab-patrol' && document.getElementById(savedTab)) {
+    switchTab(savedTab);
+  }
 }
 
 /* ── GPS ─────────────────────────────────────────────────── */

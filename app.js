@@ -25,7 +25,10 @@ const App = {
   operatorName: (localStorage.getItem('wellpatrol_operator_name') || localStorage.getItem('dng_operator_fio') || '').trim(),
   sheetsUrl: DEFAULT_SHEETS_URL,
   isSyncing: false,
+  lastPullTime: 0,
 };
+
+const PULL_COOLDOWN_MS = 120000; // 2 минуты кулдаун (защита от флуда и разряда батареи)
 
 /* ── Валидация и нормализация Ф.И.О ("Фамилия И" без точки) ─ */
 function normalizeFio(raw) {
@@ -205,6 +208,23 @@ document.addEventListener('DOMContentLoaded', async () => {
       syncPull();
     }
   });
+
+  // При пробуждении экрана / возврате в приложение — тихий пулл с кулдауном 2 минуты
+  const handleAppResume = () => {
+    if (App.sheetsUrl && navigator.onLine) {
+      if (Date.now() - (App.lastPullTime || 0) > PULL_COOLDOWN_MS) {
+        syncPull();
+      }
+    }
+  };
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      handleAppResume();
+    }
+  });
+
+  window.addEventListener('focus', handleAppResume);
 });
 
 /* ── ПТВ ─────────────────────────────────────────────────── */
@@ -231,7 +251,12 @@ function initNav() {
       tabs.forEach(t => t.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById(id)?.classList.add('active');
-      if (id === 'tab-report') renderReport();
+      if (id === 'tab-report') {
+        renderReport();
+        if (App.sheetsUrl && navigator.onLine && (Date.now() - (App.lastPullTime || 0) > PULL_COOLDOWN_MS)) {
+          syncPull();
+        }
+      }
       else if (id === 'tab-patrol') renderPatrol();
       else if (id === 'tab-pz') renderPz();
     });
@@ -1079,6 +1104,7 @@ async function syncPull(targetDate) {
 
     const resp = await fetch(url);
     const json = await resp.json();
+    App.lastPullTime = Date.now();
     if (!json || !json.success || !json.data) {
       App.isSyncing = false;
       return;
@@ -1767,17 +1793,29 @@ function initScanOcr() {
         return isNaN(v) ? null : v;
       };
 
+      const flowQ = numOrNull(row.querySelector('.in-q'));
+      const pBuf = numOrNull(row.querySelector('.in-pbuf'));
+      const pZat = numOrNull(row.querySelector('.in-pzat'));
+      const strokes = numOrNull(row.querySelector('.in-strokes'));
+      const temp = numOrNull(row.querySelector('.in-temp'));
+
+      // Авто-пропуск: если у скважины нет ни одного показателя (пустая строка)
+      const hasData = meterVal !== null || flowQ !== null || pBuf !== null || pZat !== null || strokes !== null || temp !== null;
+      if (!hasData) {
+        continue;
+      }
+
       const measData = {
         well_id: wellId,
         date: importDate,
         time: row.querySelector('.in-time')?.value?.trim() || now(),
         meter_reading: meterVal,
-        flow_rate_q: numOrNull(row.querySelector('.in-q')),
-        p_buf: numOrNull(row.querySelector('.in-pbuf')),
-        p_zat: numOrNull(row.querySelector('.in-pzat')),
-        strokes_per_minute: numOrNull(row.querySelector('.in-strokes')),
-        temperature: numOrNull(row.querySelector('.in-temp')),
-        notes: 'Импортировано с фото рапорта',
+        flow_rate_q: flowQ,
+        p_buf: pBuf,
+        p_zat: pZat,
+        strokes_per_minute: strokes,
+        temperature: temp,
+        notes: '',
         author: App.operatorName || 'Оператор',
         timestamp: Date.now(),
         updated_at: new Date().toISOString(),
@@ -1803,8 +1841,10 @@ function initScanOcr() {
     if (importedCount > 0) {
       const skipMsg = skippedCount > 0 ? ` (пропущено ${skippedCount} скв. не из ПТВ-${App.ptv})` : '';
       toast(`✓ Успешно импортировано ${importedCount} замеров для ПТВ-${App.ptv}${skipMsg}`, 'success');
-    } else {
+    } else if (skippedCount > 0) {
       toast(`⚠️ Ни один замер не сохранен: скважины отсутствуют в ПТВ-${App.ptv}`, 'error');
+    } else {
+      toast(`ℹ️ Нет данных для сохранения: все строки пустые`, 'info');
     }
 
     close();

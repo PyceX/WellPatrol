@@ -102,6 +102,11 @@ function initTheme() {
 
 /* ── Утилиты ─────────────────────────────────────────────── */
 const today = () => new Date().toLocaleDateString('en-CA');
+const getYesterday = (dateStr) => {
+  const d = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toLocaleDateString('en-CA');
+};
 const now = () => new Date().toTimeString().substring(0, 5);
 const fmt = v => (v != null && v !== '') ? v : '—';
 
@@ -704,12 +709,31 @@ async function openMeasure(well) {
   // Получить последние данные скважины
   const prevMeas = await getLatestMeasurementBefore(well.id, d);
   App.prevMeas = prevMeas;
-  App.prevMeter = prevMeas?.meter_reading ?? null;
 
+  const yDate = getYesterday(d);
+  const isYesterday = Boolean(prevMeas && prevMeas.date === yDate);
   const prevQ = prevMeas?.flow_rate_q ?? null;
-  const prevTimeStr = prevMeas?.time ? ` (${prevMeas.time})` : '';
-  document.getElementById('prev-meter-text').textContent =
-    prevQ != null ? `Последний: ${prevQ} м³${prevTimeStr}` : 'Последний: нет';
+
+  if (isYesterday) {
+    // Вчерашний замер — авторасчет Q активен
+    App.prevMeter = prevMeas?.meter_reading ?? null;
+    const prevTimeStr = prevMeas?.time ? ` (${prevMeas.time})` : '';
+    document.getElementById('prev-meter-text').textContent =
+      prevQ != null ? `Последний: ${prevQ} м³${prevTimeStr}` : 'Последний: нет';
+  } else if (prevMeas) {
+    // Замер был 2+ дня назад — авторасчет отключен, показываем дату и время
+    App.prevMeter = null;
+    const parts = (prevMeas.date || '').split('-');
+    const ddmmyyyy = parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : (prevMeas.date || '');
+    const timeStr = prevMeas.time ? `${prevMeas.time} ` : '';
+    const dateTimeStr = `${timeStr}${ddmmyyyy}`.trim();
+    document.getElementById('prev-meter-text').textContent =
+      prevQ != null ? `Последний: ${prevQ} м³ (${dateTimeStr})` : `Последний: нет (${dateTimeStr})`;
+  } else {
+    // Замеров нет вообще
+    App.prevMeter = null;
+    document.getElementById('prev-meter-text').textContent = 'Последний: нет';
+  }
 
   // Установить подсказки (placeholder) для полей, кроме Q факт (оставляем пустым без подсказок)
   document.getElementById('input-meter').placeholder   = prevMeas?.meter_reading != null ? prevMeas.meter_reading : '0';
@@ -777,9 +801,9 @@ function updateAutoCalc() {
     badge.textContent = `⚡ Авто`;
   }
 
-  // Бокс авторасчета виден ВСЕГДА, пока поле input-flow пустое,
-  // и скрывается ТОЛЬКО тогда, когда пользователь начинает вводить значение вручную.
-  if (flow.value.trim() === '') {
+  // Бокс авторасчета виден ВСЕГДА, пока поле input-flow пустое и есть вчерашний замер,
+  // и скрывается, если значение вводится вручную или вчерашнего замера нет
+  if (flow.value.trim() === '' && App.prevMeter != null) {
     badge.classList.remove('hidden');
   } else {
     badge.classList.add('hidden');
@@ -1101,28 +1125,18 @@ function syncPushMeasurement(ptv, date, wellNum, measurement, isDelete = false) 
 }
 
 /**
- * Тихая синхронизация: загрузка всех ПТВ (9-13) за выбранную дату из Google Таблицы.
+ * Загрузка и слияние замеров за одну конкретную дату из Google Таблицы.
  * Защищает локальные замеры: при пустой таблице не удаляет данные, а выгружает их!
  */
-async function syncPull(targetDate) {
-  if (!App.sheetsUrl || !navigator.onLine || App.isSyncing) return;
-  App.isSyncing = true;
-
+async function fetchAndMergeDate(date, allWells) {
   try {
-    await processOfflineSyncQueue();
-
-    const date = targetDate || document.getElementById('report-date')?.value || today();
     const url = App.sheetsUrl + (App.sheetsUrl.includes('?') ? '&' : '?') + 'action=pull&date=' + encodeURIComponent(date) + '&_t=' + Date.now();
-
     const resp = await fetch(url);
     const json = await resp.json();
-    App.lastPullTime = Date.now();
     if (!json || !json.success || !json.data) {
-      App.isSyncing = false;
-      return;
+      return false;
     }
 
-    const allWells = await getAllWells();
     let hasChanges = false;
     const unsyncedToUpload = [];
 
@@ -1225,6 +1239,40 @@ async function syncPull(targetDate) {
     if (unsyncedToUpload.length > 0) {
       syncPushBatch(unsyncedToUpload);
     }
+
+    return hasChanges;
+  } catch (e) {
+    console.warn('fetchAndMergeDate error for date ' + date + ':', e);
+    return false;
+  }
+}
+
+/**
+ * Тихая синхронизация: загрузка всех ПТВ (9-13) за выбранную дату из Google Таблицы.
+ * При синхронизации за сегодня также подтягивает вчерашний день (для авторасчета Q у сменщиков).
+ */
+async function syncPull(targetDate) {
+  if (!App.sheetsUrl || !navigator.onLine || App.isSyncing) return;
+  App.isSyncing = true;
+
+  try {
+    await processOfflineSyncQueue();
+
+    const date = targetDate || document.getElementById('report-date')?.value || today();
+    const allWells = await getAllWells();
+
+    // 1. Загружаем целевую дату
+    let hasChanges = await fetchAndMergeDate(date, allWells);
+
+    // 2. Решение 1: если запрашивается сегодня (или запуск приложения) —
+    // тихо подтягиваем вчерашний день, чтобы у сменщиков на любых смартфонах были показания для авторасчета Q
+    if (date === today()) {
+      const yDate = getYesterday(date);
+      const yChanged = await fetchAndMergeDate(yDate, allWells);
+      if (yChanged) hasChanges = true;
+    }
+
+    App.lastPullTime = Date.now();
 
     if (hasChanges) {
       await refresh();
@@ -1731,12 +1779,12 @@ function initScanOcr() {
 Правила считывания рукописного текста:
 1. 'well_number': Номер скважины из колонки "Ұңғы №" (напр. '1686', '1688', '1799', '1800', '391D', '1263G'). Извлекай ТОЛЬКО номер скважины без лишних слов.
 2. 'meter_reading': Показания из колонки "Есептегіш көрсеткіштері". Если замера нет — null.
-3. 'flow_rate_q': Значение дебита из колонки "Q нақты". (напр. '16', '79').
+3. 'flow_rate_q': Значение дебита из колонки "Q нақты". (напр. '3', '16', '79').
 4. 'p_buf': Буферное давление из колонки "P буф" (напр. 3.5, 2). Не путай с затрубным давлением.
-5. 'p_zat': Затрубное давление из колонки "P зат" (напр. 2.5, 1.5, 0, 0.2).
+5. 'p_zat': Затрубное давление из колонки "P зат" (напр. 2.5, 2, 0, 0.2). Равно или меньше чем буферное давление.
 6. 'strokes_per_minute': Обороты из колонки "об/мин" или Чк (напр. 120, 280, 3, 220, 160, 370). Если колонка пуста — null.
 7. 'temperature': Температура "T°C". Если колонка пуста — null.
-8. 'time': Время замера из колонки "Уақыты" в формате HH:MM (напр. '08:14', '08:16', '08:50'). Если колонка пуста — null.
+8. 'time': Время замера из колонки "Уақыты" в формате HH:MM (напр. '07:14', '08:20', '09:50'). Если колонка пуста — null.
 
 Строго сопоставляй значения по строкам таблицы. Не смещай колонки.`;
 

@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>WellPatrol · Сводный дашборд Мастера и Геолога</title>
+  
+  <link rel="icon" type="image/x-icon" href="./favicons/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="./favicons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="./favicons/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./favicons/apple-touch-icon.png">
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#161b22">
+
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./dashboard.css">
+</head>
+<body class="dashboard-page">
+
+  <!-- ── 1. ВЕРХНЯЯ ШАПКА ────────────────────────────────────── -->
+  <header class="dash-header">
+    <div class="dash-header-inner">
+      <div class="dash-brand">
+        <span style="font-size:1.4rem;">🛢️</span>
+        <div class="dash-title">
+          <span>WellPatrol</span>
+          <span class="dash-badge-role">Сводка Мастера / Геолога</span>
+        </div>
+      </div>
+
+      <div class="dash-header-actions">
+        <span class="dash-sync-info" id="dash-sync-time">Синхронизировано: —</span>
+        <button type="button" class="dash-btn-sync" id="btn-dash-sync" title="Запросить свежие замеры из Google Таблицы">
+          <span class="spin-icon">🔄</span> <span>Обновить</span>
+        </button>
+        <button type="button" class="dash-theme-btn" id="btn-dash-theme" title="Сменить тему">🌓</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── 2. ПАНЕЛЬ УПРАВЛЕНИЯ И ФИЛЬТРОВ ─────────────────────── -->
+  <div class="dash-controls">
+    <div class="dash-controls-inner">
+      <div class="dash-date-picker">
+        <label for="dash-date">Дата анализа:</label>
+        <input type="date" id="dash-date">
+      </div>
+
+      <div class="dash-ptv-filters" id="dash-ptv-bar">
+        <button type="button" class="dash-ptv-btn active" data-ptv="all">Все кусты (9–13)</button>
+        <button type="button" class="dash-ptv-btn" data-ptv="9">ПТВ-9</button>
+        <button type="button" class="dash-ptv-btn" data-ptv="10">ПТВ-10</button>
+        <button type="button" class="dash-ptv-btn" data-ptv="11">ПТВ-11</button>
+        <button type="button" class="dash-ptv-btn" data-ptv="12">ПТВ-12</button>
+        <button type="button" class="dash-ptv-btn" data-ptv="13">ПТВ-13</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 3. ОСНОВНОЙ КОНТЕНТ ─────────────────────────────────── -->
+  <main class="dash-content">
+
+    <!-- БЛОК 1: Главные KPI дня -->
+    <section class="kpi-grid">
+      <!-- KPI 1: Суммарный дебит -->
+      <div class="kpi-card" id="card-kpi-q">
+        <div class="kpi-header">
+          <span>Суточная добыча жидкости</span>
+          <span class="kpi-diff neutral" id="diff-total-q">—</span>
+        </div>
+        <div class="kpi-value-row">
+          <span class="kpi-main-val" id="val-total-q">0</span>
+          <span class="kpi-unit">м³/сут</span>
+        </div>
+        <div class="kpi-footer" id="subtext-total-q">Вчера: — м³</div>
+      </div>
+
+      <!-- KPI 2: Прогресс обхода -->
+      <div class="kpi-card" id="card-kpi-progress">
+        <div class="kpi-header">
+          <span>Прогресс замера фонда</span>
+          <span class="kpi-icon">📋</span>
+        </div>
+        <div class="kpi-value-row">
+          <span class="kpi-main-val" id="val-progress-pct">0%</span>
+          <span class="kpi-unit" id="val-progress-counts">(0 / 0)</span>
+        </div>
+        <div class="kpi-progress-bar">
+          <div class="kpi-progress-fill" id="fill-progress" style="width:0%;"></div>
+        </div>
+        <div class="kpi-footer" id="subtext-progress">Осталось замерить: 0</div>
+      </div>
+
+      <!-- KPI 3: Падения дебита -->
+      <div class="kpi-card clickable" id="card-kpi-drops" title="Показать скважины с падением дебита">
+        <div class="kpi-header">
+          <span>Падение дебита (Q)</span>
+          <span class="kpi-icon">🔻</span>
+        </div>
+        <div class="kpi-value-row">
+          <span class="kpi-main-val" id="val-drops-count" style="color:var(--c-danger);">0</span>
+          <span class="kpi-unit">скв.</span>
+        </div>
+        <div class="kpi-footer">Снижение ≥ 3 м³ или ≥ 20%</div>
+      </div>
+
+      <!-- KPI 4: Аномалии давлений -->
+      <div class="kpi-card clickable" id="card-kpi-anomalies" title="Показать скважины с аномальным давлением">
+        <div class="kpi-header">
+          <span>Аномалии давлений</span>
+          <span class="kpi-icon">⚡</span>
+        </div>
+        <div class="kpi-value-row">
+          <span class="kpi-main-val" id="val-anomalies-count" style="color:var(--c-warning);">0</span>
+          <span class="kpi-unit">скв.</span>
+        </div>
+        <div class="kpi-footer">Pбуф ≤ 0 или рост Pзат</div>
+      </div>
+
+      <!-- KPI 5: Нулевой дебит -->
+      <div class="kpi-card clickable" id="card-kpi-zero" title="Показать скважины с Q=0">
+        <div class="kpi-header">
+          <span>Простой / Q = 0</span>
+          <span class="kpi-icon">⏸️</span>
+        </div>
+        <div class="kpi-value-row">
+          <span class="kpi-main-val" id="val-zero-count">0</span>
+          <span class="kpi-unit">скв.</span>
+        </div>
+        <div class="kpi-footer">Скважины без подачи</div>
+      </div>
+    </section>
+
+    <!-- БЛОК 2: Сводка по кустам (ПТВ-9 ... ПТВ-13) -->
+    <section>
+      <div class="section-title">
+        <span>🏭</span> <span>Сводка по кустам (ПТВ-9 ... ПТВ-13)</span>
+      </div>
+      <div class="ptv-cards-grid" id="ptv-summary-container">
+        <!-- Генерируется динамически в dashboard.js -->
+      </div>
+    </section>
+
+    <!-- БЛОК 3: Оперативный «Тревожный список» / Алерты -->
+    <section class="alerts-section">
+      <div class="section-title">
+        <span>⚠️</span> <span>Оперативный контроль отклонений</span>
+      </div>
+      <div class="alerts-tabs" id="alerts-tab-bar">
+        <button type="button" class="alert-tab-btn active" data-alert-tab="drops">
+          <span>🔻 Падение дебита</span>
+          <span class="alert-tab-badge red" id="badge-tab-drops">0</span>
+        </button>
+        <button type="button" class="alert-tab-btn" data-alert-tab="pressures">
+          <span>⚡ Аномалии давлений</span>
+          <span class="alert-tab-badge amber" id="badge-tab-pressures">0</span>
+        </button>
+        <button type="button" class="alert-tab-btn" data-alert-tab="zeros">
+          <span>⏸️ Простой / Q = 0</span>
+          <span class="alert-tab-badge gray" id="badge-tab-zeros">0</span>
+        </button>
+        <button type="button" class="alert-tab-btn" data-alert-tab="unmeasured">
+          <span>⏳ Не замерены</span>
+          <span class="alert-tab-badge gray" id="badge-tab-unmeasured">0</span>
+        </button>
+      </div>
+
+      <div class="alerts-list" id="alerts-list-container">
+        <!-- Карточки отклонений генерируются в dashboard.js -->
+      </div>
+    </section>
+
+    <!-- БЛОК 4: Полная сводная таблица всех скважин (как в "Рапорте") -->
+    <section class="full-table-section">
+      <div class="table-toolbar">
+        <div class="table-filters-left">
+          <input type="text" id="table-search-input" class="dash-search-box" placeholder="🔍 Поиск по № скв..." autocomplete="off">
+          
+          <div class="table-filter-pills" id="table-filter-pills">
+            <button type="button" class="table-pill-btn active" data-filter="all">Все</button>
+            <button type="button" class="table-pill-btn" data-filter="done">С замером</button>
+            <button type="button" class="table-pill-btn" data-filter="todo">Не замерены</button>
+            <button type="button" class="table-pill-btn" data-filter="drops">Падение Q</button>
+            <button type="button" class="table-pill-btn" data-filter="anomalies">Аномалии</button>
+          </div>
+        </div>
+
+        <div class="table-actions-right">
+          <span class="dash-count-pill" id="table-count-label">Показано: 0 скважин</span>
+        </div>
+      </div>
+
+      <div class="dash-table-wrap">
+        <table class="dash-table" id="dashboard-full-table">
+          <thead>
+            <tr>
+              <th>Куст</th>
+              <th>Скв</th>
+              <th>Показания</th>
+              <th>Q факт (м³)</th>
+              <th>P буф</th>
+              <th>P зат</th>
+              <th>Об/Чк</th>
+              <th>t°</th>
+              <th>Время</th>
+              <th>Оператор</th>
+              <th>Примечание</th>
+            </tr>
+          </thead>
+          <tbody id="dashboard-table-body">
+            <!-- Строки таблицы генерируются в dashboard.js -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ── 4. МОДАЛЬНОЕ ОКНО ИСТОРИИ И ГРАФИКА СКВАЖИНЫ ────────── -->
+  <div class="dash-modal hidden" id="dash-modal-well">
+    <div class="dash-modal-backdrop" id="dash-modal-backdrop"></div>
+    <div class="dash-modal-dialog">
+      <div class="dash-modal-header">
+        <div class="dash-modal-title">
+          <span id="modal-well-number">№ —</span>
+          <span class="dash-badge-role" id="modal-well-ptv">ПТВ-—</span>
+        </div>
+        <button type="button" class="dash-modal-close" id="btn-close-modal">&times;</button>
+      </div>
+      <div class="dash-modal-body">
+        
+        <!-- График тренда (SVG) -->
+        <div class="chart-container-box">
+          <div class="chart-title-bar">
+            <span>📈 Динамика дебита и давлений за 7 замеров</span>
+            <div class="chart-legend">
+              <span class="legend-item"><span class="legend-dot q-color"></span> Q (м³)</span>
+              <span class="legend-item"><span class="legend-dot pbuf-color"></span> P буф</span>
+              <span class="legend-item"><span class="legend-dot pzat-color"></span> P зат</span>
+            </div>
+          </div>
+          <div class="svg-chart-wrap" id="modal-svg-chart">
+            <!-- Векторный интерактивный SVG график -->
+          </div>
+        </div>
+
+        <!-- Таблица последних замеров скважины -->
+        <div>
+          <div class="section-title" style="font-size:0.9rem; margin-bottom:8px;">
+            <span>📋 История замеров</span>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="modal-history-table">
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Время</th>
+                  <th>Счетчик</th>
+                  <th>Q (м³)</th>
+                  <th>P буф</th>
+                  <th>P зат</th>
+                  <th>Об/Чк</th>
+                  <th>Автор</th>
+                  <th>Примечание</th>
+                </tr>
+              </thead>
+              <tbody id="modal-history-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast контейнер -->
+  <div id="dash-toast-container"></div>
+
+  <!-- Подключение скриптов базы и логики дашборда -->
+  <script src="./db.js"></script>
+  <script src="./dashboard.js"></script>
+</body>
+</html>

@@ -1,10 +1,13 @@
-const CACHE_NAME = 'dng-patrol-v14';
+const CACHE_NAME = 'dng-patrol-v19';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
   './db.js',
   './app.js',
+  './dashboard.html',
+  './dashboard.css',
+  './dashboard.js',
   './xlsx-populate.min.js',
   './Суточный_рапорт.xlsx',
   './manifest.json',

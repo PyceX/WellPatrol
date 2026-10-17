@@ -3,7 +3,9 @@
    Адаптивный интерфейс для ПК, планшетов и смартфонов
    ============================================================ */
 
-.dashboard-page {
+body.dashboard-page {
+  padding: 0 !important;
+  margin: 0 !important;
   background-color: var(--c-bg);
   color: var(--c-text);
   font-family: var(--font-sans);
@@ -24,8 +26,10 @@
 }
 
 .dash-header-inner {
-  max-width: 1600px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -117,8 +121,10 @@
 }
 
 .dash-controls-inner {
-  max-width: 1600px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -182,10 +188,10 @@
 /* ── Контент дашборда ──────────────────────────────────────── */
 .dash-content {
   flex: 1;
-  max-width: 1600px;
   width: 100%;
-  margin: 0 auto;
-  padding: 20px;
+  max-width: 100%;
+  margin: 0;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -862,6 +868,165 @@
 @keyframes slideIn {
   from { transform: translateY(20px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
+}
+
+/* ── Адаптация для экранов ПК и мониторов ────────────────── */
+@media (min-width: 1024px) {
+  body.dashboard-page {
+    font-size: 16px;
+  }
+
+  .dash-header {
+    padding: 14px 28px;
+  }
+  .dash-title {
+    font-size: 1.35rem;
+  }
+  .dash-badge-role {
+    font-size: 0.8rem;
+    padding: 4px 10px;
+  }
+  .dash-sync-info {
+    font-size: 0.85rem;
+  }
+  .dash-btn-sync {
+    font-size: 0.88rem;
+    padding: 8px 16px;
+  }
+  .dash-theme-btn {
+    padding: 8px 14px;
+    font-size: 1rem;
+  }
+
+  .dash-controls {
+    padding: 14px 28px;
+  }
+  .dash-date-picker label {
+    font-size: 0.92rem;
+  }
+  .dash-date-picker input[type="date"] {
+    font-size: 0.95rem;
+    padding: 8px 14px;
+  }
+  .dash-ptv-btn {
+    font-size: 0.88rem;
+    padding: 8px 16px;
+  }
+
+  .dash-content {
+    padding: 24px 28px;
+    gap: 28px;
+  }
+
+  .kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+  }
+  .kpi-card {
+    padding: 18px 20px;
+  }
+  .kpi-header {
+    font-size: 0.82rem;
+  }
+  .kpi-main-val {
+    font-size: 2.35rem;
+  }
+  .kpi-unit {
+    font-size: 0.95rem;
+  }
+  .kpi-diff {
+    font-size: 0.82rem;
+    padding: 3px 9px;
+  }
+  .kpi-footer {
+    font-size: 0.82rem;
+  }
+
+  .ptv-cards-grid {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 14px;
+  }
+  .ptv-summary-card {
+    padding: 16px 18px;
+  }
+  .ptv-card-name {
+    font-size: 1.15rem;
+  }
+  .ptv-stat-item {
+    font-size: 0.92rem;
+  }
+  .ptv-stat-label {
+    font-size: 0.78rem;
+  }
+
+  .section-title {
+    font-size: 1.15rem;
+    margin-bottom: 14px;
+  }
+
+  .alert-tab-btn {
+    font-size: 0.92rem;
+    padding: 8px 18px;
+  }
+  .alert-item-card {
+    padding: 14px 20px;
+    font-size: 0.95rem;
+  }
+  .alert-well-title {
+    font-size: 1.05rem;
+  }
+  .alert-details {
+    font-size: 0.92rem;
+    gap: 20px;
+  }
+
+  .dash-search-box {
+    width: 280px;
+    font-size: 0.92rem;
+    padding: 8px 14px;
+  }
+  .table-pill-btn {
+    font-size: 0.85rem;
+    padding: 7px 16px;
+  }
+  .dash-count-pill {
+    font-size: 0.9rem;
+  }
+
+  .dash-table-wrap {
+    max-height: 750px;
+  }
+  .dash-table {
+    font-size: 0.94rem;
+  }
+  .dash-table th {
+    padding: 12px 16px;
+    font-size: 0.82rem;
+  }
+  .dash-table td {
+    padding: 12px 16px;
+    font-size: 0.94rem;
+  }
+  .td-notes-col {
+    max-width: 400px;
+    font-size: 0.88rem;
+  }
+
+  .dash-modal-dialog {
+    max-width: 950px;
+  }
+  .svg-chart-wrap {
+    height: 280px;
+  }
+}
+
+@media (min-width: 1360px) {
+  .kpi-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+  .ptv-cards-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
 }
 
 /* ── Мобильная адаптация ───────────────────────────────────── */
